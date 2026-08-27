@@ -9,6 +9,6 @@
     "start:web": "node apps/web/server.js",
     "start:scheduler": "node apps/scheduler/scheduler.js",
     "start:worker": "node apps/worker/worker.js",
-    "test": "node --test ddguard/test/"
+    "test": "node --test ddguard/test/*.test.js"
   }
 }
