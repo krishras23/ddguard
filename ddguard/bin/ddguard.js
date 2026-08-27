@@ -15,7 +15,8 @@ const USAGE = `usage: ddguard [plan.json] [--format=terminal|markdown|json] [--n
 
   DD_API_URL   metrics API base (default http://localhost:8126)
   DD_API_KEY   required by real Datadog, ignored by mockdd
-  DD_APP_KEY   required by real Datadog, ignored by mockdd`;
+  DD_APP_KEY   required by real Datadog, ignored by mockdd
+  DD_SLACK_ACCOUNT  Slack account name; required to verify @slack handles`;
 
 function parseArgs(argv) {
   const opts = { path: 'fixtures/tfplan.json', format: 'terminal', backtest: true, days: 30 };
@@ -30,6 +31,19 @@ function parseArgs(argv) {
   if (!['terminal', 'markdown', 'json'].includes(opts.format)) throw new Error(`unknown format ${opts.format}`);
   if (!Number.isInteger(opts.days) || opts.days < 1) throw new Error('--days must be a positive integer');
   return opts;
+}
+
+async function pool(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 async function inspect(monitor, client, opts) {
@@ -65,9 +79,10 @@ async function main() {
     apiUrl: process.env.DD_API_URL || 'http://localhost:8126',
     apiKey: process.env.DD_API_KEY,
     appKey: process.env.DD_APP_KEY,
+    slackAccount: process.env.DD_SLACK_ACCOUNT,
   });
 
-  const findings = (await Promise.all(monitors.map((m) => inspect(m, client, opts)))).flat();
+  const findings = (await pool(monitors, 4, (m) => inspect(m, client, opts))).flat();
   const color = (process.stdout.isTTY || process.env.FORCE_COLOR) && !process.env.NO_COLOR;
   console.log(report.render(monitors, findings, opts.format, { color }));
 
