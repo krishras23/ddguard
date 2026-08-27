@@ -1,4 +1,5 @@
 const CHECK = 'handles';
+const PREFIX = 'pagerduty-';
 const HANDLE = /@([A-Za-z0-9][A-Za-z0-9._+-]*(?:@[A-Za-z0-9.-]+)?)/g;
 
 function nearest(name, candidates) {
@@ -24,55 +25,35 @@ async function run(monitor, client) {
     return [finding('warn', 'NO_HANDLE', 'No @handle in the message — this monitor alerts into the void.')];
   }
 
-  const [slackRes, pagerdutyRes] = await Promise.allSettled([client.slackChannels(), client.pagerdutyServices()]);
+  let services;
+  try {
+    services = await client.pagerdutyServices();
+  } catch (err) {
+    return [finding('warn', 'CHECK_UNAVAILABLE', 'Could not reach the PagerDuty integration API — handles unverified.', { detail: err.message })];
+  }
 
-  const providers = {
-    Slack: {
-      prefix: 'slack-',
-      known: slackRes.status === 'fulfilled' ? slackRes.value.map((c) => c.name.replace(/^#/, '')) : null,
-      error: slackRes.reason && slackRes.reason.message,
-      unverified: [],
-    },
-    PagerDuty: {
-      prefix: 'pagerduty-',
-      known: pagerdutyRes.status === 'fulfilled' ? pagerdutyRes.value.map((s) => s.service_name) : null,
-      error: pagerdutyRes.reason && pagerdutyRes.reason.message,
-      unverified: [],
-    },
-  };
+  const known = services.map((s) => s.service_name);
   const findings = [];
+  let unverified = 0;
 
   for (const handle of handles) {
-    if (handle.includes('@')) continue;
-
-    const provider = Object.values(providers).find((p) => handle.startsWith(p.prefix));
-    if (!provider) {
-      findings.push(finding('warn', 'HANDLE_UNCHECKED', `@${handle} is not a Slack, PagerDuty or email handle — ddguard cannot verify it resolves.`));
+    if (!handle.startsWith(PREFIX)) {
+      unverified++;
       continue;
     }
-    if (!provider.known) {
-      provider.unverified.push(handle);
-      continue;
-    }
-
-    const known = provider.known;
-    const target = handle.slice(provider.prefix.length);
+    const target = handle.slice(PREFIX.length);
     if (known.some((k) => target === k || target.endsWith(`-${k}`))) continue;
 
     const guess = nearest(target, known);
     findings.push(finding('fail', 'HANDLE_UNRESOLVED', `@${handle} does not resolve to a configured integration — notifications are silently dropped.`, {
-      detail: `known: ${known.join(', ') || '(none)'}`,
-      suggestion: guess ? `Did you mean @${handle.slice(0, handle.length - target.length)}${guess}?` : undefined,
+      detail: `known: ${known.map((k) => `@${PREFIX}${k}`).join(', ') || '(none)'}`,
+      suggestion: guess ? `Did you mean @${PREFIX}${guess}?` : undefined,
     }));
   }
 
-  for (const [name, p] of Object.entries(providers)) {
-    if (!p.unverified.length) continue;
-    findings.push(finding('warn', 'CHECK_UNAVAILABLE', `Could not reach the ${name} integration API — ${p.unverified.map((h) => `@${h}`).join(', ')} unverified.`, { detail: p.error }));
-  }
-
   if (!findings.length) {
-    findings.push(finding('pass', 'HANDLES_RESOLVE', `All ${handles.length} handle(s) resolve.`));
+    const note = unverified ? `; ${unverified} non-PagerDuty handle(s) not verified` : '';
+    findings.push(finding('pass', 'HANDLES_RESOLVE', `All ${handles.length} handle(s) resolve${note}.`));
   }
   return findings;
 }

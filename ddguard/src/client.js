@@ -46,19 +46,11 @@ function once(fn) {
   return () => (pending = pending || fn());
 }
 
-function createClient({ apiUrl, apiKey, appKey, slackAccount }) {
+function createClient({ apiUrl, apiKey, appKey }) {
   const headers = { Accept: 'application/json' };
   if (apiKey) headers['DD-API-KEY'] = apiKey;
   if (appKey) headers['DD-APPLICATION-KEY'] = appKey;
   const call = (path, params) => get(apiUrl, path, params || {}, headers);
-
-  // Datadog's v1 spec exposes channels only under an explicit account name; there is
-  // no documented endpoint that lists accounts, so we require one rather than guess.
-  const slackChannels = once(async () => {
-    if (!slackAccount) throw new Error('DD_SLACK_ACCOUNT not set');
-    const path = `api/v1/integration/slack/configuration/accounts/${encodeURIComponent(slackAccount)}/channels`;
-    return call(path);
-  });
 
   const pagerdutyServices = once(() =>
     call('api/v1/integration/pagerduty').then((r) => r.services || (Array.isArray(r) ? r : [])));
@@ -68,7 +60,6 @@ function createClient({ apiUrl, apiKey, appKey, slackAccount }) {
     query: (dataQuery, fromSec, toSec) =>
       call('api/v1/query', { from: Math.floor(fromSec), to: Math.floor(toSec), query: dataQuery }),
     searchMetrics: (q) => call('api/v1/search', { q: `metrics:${q}` }),
-    slackChannels,
     pagerdutyServices,
   };
 }
