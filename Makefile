@@ -8,7 +8,7 @@ TAIL        ?= exit $$status
 
 export PORT
 
-.PHONY: seed mockdd demo check run clean
+.PHONY: seed mockdd demo check gate run clean
 
 seed:
 	node mockdd/seed.js
@@ -21,6 +21,10 @@ demo: run
 
 check: FORMAT_FLAG = --format=markdown
 check: run
+
+# the real gate: a real plan against a real API, no mockdd and no fixtures
+gate:
+	@node ddguard/bin/ddguard.js $(PLAN) --days=$(DAYS) --format=markdown
 
 run: seed
 	@node mockdd/server.js & \

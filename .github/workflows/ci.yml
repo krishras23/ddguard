@@ -15,6 +15,9 @@ jobs:
           node-version: '20'
       - run: npm test
 
+  # fixtures/tfplan.json is deliberately broken, so this is a demo, not a gate: it asserts
+  # ddguard still finds every seeded defect. The gate runs against the PR's own plan and
+  # lives in the repo being guarded — see "Wiring it into CI" in the README.
   demo:
     runs-on: ubuntu-latest
     steps:
@@ -22,9 +25,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # the fixture monitors are deliberately broken, so ddguard is expected to
-      # exit non-zero here; this asserts it still finds all three failures
-      - run: |
+      - name: the seeded defects are still caught
+        shell: bash
+        run: |
+          set -o pipefail
           make demo | tee out.txt
-          grep -qc 'ddguard exited 1' out.txt
+          grep -q 'ddguard exited 1' out.txt
           test "$(grep -c '^FAIL' out.txt)" = 3
+      - name: markdown report to the job summary
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          make check | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          test "$status" -eq 1 || { echo "::error::expected exit 1 from the fixture plan, got $status"; exit 1; }

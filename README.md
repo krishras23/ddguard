@@ -103,10 +103,60 @@ terraform show -json tfplan > plan.json
 node ddguard/bin/ddguard.js plan.json
 ```
 
-Exit `0` clean · `1` findings · `2` tool error. `--format=markdown` for a PR comment,
-`--format=json` to pipe, `--no-backtest` to skip the slow check, `--days=N` to widen it.
+Exit `0` clean · `1` findings that should block the merge · `2` ddguard could not do its job.
+`--format=markdown` for a PR comment, `--format=json` to pipe, `--no-backtest` to skip the slow
+check, `--days=N` to widen it.
 
-`.github/workflows/ddguard.yml` runs it on pull requests and writes the table to the job summary.
+### When the API is down
+
+Network checks fail open. One unreachable endpoint degrades that check to a `CHECK_UNAVAILABLE`
+warning rather than failing your PR, because a flaky API is not a reason to block a merge.
+
+That stops at total failure. If the credentials are rejected (401/403), or not one monitor could be
+verified, ddguard exits `2` and says so — a run where nothing could be checked must not be
+indistinguishable from a run where nothing was wrong. The header line always reports how many
+monitors went unverified.
+
+## Wiring it into CI
+
+`.github/workflows/ci.yml` runs ddguard against `fixtures/tfplan.json`, which is deliberately
+broken. That is a demo — it asserts the seeded defects are still caught. It is not a gate, and a
+workflow that gates on a fixture would pass every PR in your repo forever.
+
+The gate belongs in the repo holding your monitors, and runs against that PR's own plan:
+
+```yaml
+name: monitor-gate
+
+on: pull_request
+
+jobs:
+  ddguard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: ddguard
+        shell: bash
+        env:
+          DD_API_URL: https://api.datadoghq.com
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+          DD_APP_KEY: ${{ secrets.DD_APP_KEY }}
+        run: |
+          set -o pipefail
+          terraform init -input=false
+          terraform plan -input=false -out=tfplan
+          terraform show -json tfplan > plan.json
+          make gate PLAN=plan.json | tee -a "$GITHUB_STEP_SUMMARY"
+```
+
+`shell: bash` and `set -o pipefail` are load-bearing, not boilerplate. The default shell for `run:`
+is `bash -e {0}` with no `pipefail`, so `tee` returns 0, ddguard's exit code is discarded, and the
+gate passes on every PR while looking green. If you take one line from this file, take that one.
 
 ## mockdd is a demo shim
 
@@ -128,7 +178,7 @@ demo/          the recording and the script that produces it
 IMPLEMENTATION.md   design decisions and contracts
 ```
 
-Node, CommonJS, no runtime dependencies. `npm test` — 21 tests.
+Node, CommonJS, no runtime dependencies. `npm test` — 36 tests.
 
 ## Limitations
 
@@ -138,4 +188,4 @@ Node, CommonJS, no runtime dependencies. `npm test` — 21 tests.
 - The backtest reads whatever retention your metric actually has. A 30-day window against a metric
   Datadog rolled up will replay the rolled-up values, not raw.
 - `make demo` reports ddguard's exit code rather than propagating it, so the recipe reads cleanly.
-  `make check` propagates, and is what CI uses.
+  `make check` propagates; `make gate` is the same thing without mockdd.
