@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node --test 'ddguard/test/*.test.js'
+
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # the fixture monitors are deliberately broken, so ddguard is expected to
+      # exit non-zero here; this asserts it still finds all three failures
+      - run: |
+          make demo | tee out.txt
+          grep -qc 'ddguard exited 1' out.txt
+          test "$(grep -c '^FAIL' out.txt)" = 3
