@@ -1,8 +1,9 @@
 {
-  "name": "scheduler-nginx",
+  "name": "ddguard",
   "private": true,
   "type": "commonjs",
   "scripts": {
     "test": "node --test ddguard/test/*.test.js"
-  }
+  },
+  "description": "Catches Datadog monitors that will never fire, before they merge."
 }
