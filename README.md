@@ -125,7 +125,6 @@ ddguard/       the CLI — plan parser, query parser, four checks, reporters
 mockdd/        Datadog-shaped API + fixture generator
 fixtures/      monitors.tf and the tfplan.json ddguard reads
 demo/          the recording and the script that produces it
-docs/          metrics primer
 IMPLEMENTATION.md   design decisions and contracts
 ```
 
