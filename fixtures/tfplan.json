@@ -1,0 +1,478 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.9.5",
+  "resource_changes": [
+    {
+      "address": "datadog_monitor.worker_dead_letters",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "worker_dead_letters",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P1][worker] Dead-lettered jobs (demo)",
+          "type": "query alert",
+          "query": "sum(last_10m):sum:worker.runs.processed{env:demo,service:worker,status:dead-lettered}.as_count() >= 1",
+          "message": "A job exhausted MAX_ATTEMPTS and landed on jobs.dead.\n\nRunbook: https://runbooks.example.internal/worker/dead-letters\n@pagerduty-worker-oncall @slack-worker-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:worker",
+            "env:demo"
+          ],
+          "priority": "1",
+          "monitor_thresholds": [
+            {
+              "critical": "1",
+              "critical_recovery": "0",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": true,
+          "no_data_timeframe": 30,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": false,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": 60,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.worker_processed_drop",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "worker_processed_drop",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P1][worker] Jobs processed drop",
+          "type": "query alert",
+          "query": "sum(last_15m):sum:worker.runs.procesed{env:demo,service:worker,status:success}.as_count() < 20",
+          "message": "Successful job throughput fell below the floor for 15m.\n\nRunbook: https://runbooks.example.internal/worker/throughput\n@slack-worker-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:worker",
+            "env:demo"
+          ],
+          "priority": "1",
+          "monitor_thresholds": [
+            {
+              "critical": "20",
+              "critical_recovery": "30",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": true,
+          "no_data_timeframe": 30,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": false,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.scheduler_queue_rate",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "scheduler_queue_rate",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P2][scheduler] Queue rate below floor",
+          "type": "query alert",
+          "query": "sum(last_15m):sum:scheduler.runs.queued{env:prod,service:scheduler}.as_count() < 5",
+          "message": "The scheduler loop is publishing fewer runs than the interval schedule implies.\n\nRunbook: https://runbooks.example.internal/scheduler/queue-rate\n@slack-scheduler-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:scheduler",
+            "env:demo"
+          ],
+          "priority": "2",
+          "monitor_thresholds": [
+            {
+              "critical": "5",
+              "critical_recovery": "10",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": true,
+          "no_data_timeframe": 30,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": false,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.nginx_5xx_rate",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "nginx_5xx_rate",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P1][nginx] 5xx rate high",
+          "type": "query alert",
+          "query": "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx}.as_count() > 30",
+          "message": "The edge proxy is returning 5xx above the error budget burn rate.\n\nRunbook: https://runbooks.example.internal/nginx/5xx\n@pagerduty-nginx-onclal @slack-nginx-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:nginx",
+            "env:demo"
+          ],
+          "priority": "1",
+          "monitor_thresholds": [
+            {
+              "critical": "30",
+              "critical_recovery": "15",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": false,
+          "no_data_timeframe": 10,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": true,
+          "on_missing_data": "resolve",
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.worker_queue_latency",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "worker_queue_latency",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "[P2][worker] Queue latency high",
+          "type": "query alert",
+          "query": "avg(last_5m):avg:worker.queue.latency{env:demo,service:worker} > 500",
+          "message": "Time between publish and ack is above target.\n\nRunbook: https://runbooks.example.internal/worker/queue-latency\n@slack-worker-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:worker",
+            "env:demo"
+          ],
+          "priority": "2",
+          "monitor_thresholds": [
+            {
+              "critical": "500",
+              "critical_recovery": "250",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": false,
+          "no_data_timeframe": 10,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": 60,
+          "require_full_window": true,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null,
+          "id": "3172049"
+        },
+        "after": {
+          "id": "3172049",
+          "name": "[P2][worker] Queue latency high",
+          "type": "query alert",
+          "query": "avg(last_5m):avg:worker.queue.latency{env:demo,service:worker} > 100",
+          "message": "Time between publish and ack is above target.\n\nRunbook: https://runbooks.example.internal/worker/queue-latency\n@slack-worker-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:worker",
+            "env:demo"
+          ],
+          "priority": "2",
+          "monitor_thresholds": [
+            {
+              "critical": "100",
+              "critical_recovery": "50",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": false,
+          "no_data_timeframe": 10,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": 60,
+          "require_full_window": true,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {},
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.nginx_canary_errors",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "nginx_canary_errors",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P2][nginx] Canary 5xx elevated",
+          "type": "query alert",
+          "query": "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx,target:web_canary}.as_count() > 20",
+          "message": "The canary target is erroring more than the primary. Consider shifting weight back.\n\nRunbook: https://runbooks.example.internal/nginx/canary\n@slack-nginx-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:nginx",
+            "env:demo"
+          ],
+          "priority": "2",
+          "monitor_thresholds": [
+            {
+              "critical": "20",
+              "critical_recovery": null,
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": false,
+          "no_data_timeframe": 10,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": false,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.worker_queue_depth",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "worker_queue_depth",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P3][worker] Queue backlog",
+          "type": "query alert",
+          "query": "avg(last_10m):avg:worker.queue.depth{env:demo,service:worker} > 999999",
+          "message": "jobs.primary is accumulating faster than the worker drains it.\n\nRunbook: https://runbooks.example.internal/worker/backlog\n@slack-worker-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:worker",
+            "env:demo"
+          ],
+          "priority": "3",
+          "monitor_thresholds": [
+            {
+              "critical": "999999",
+              "critical_recovery": "500000",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": true,
+          "no_data_timeframe": 20,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": true,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    },
+    {
+      "address": "datadog_monitor.scheduler_runs_by_trigger",
+      "mode": "managed",
+      "type": "datadog_monitor",
+      "name": "scheduler_runs_by_trigger",
+      "provider_name": "registry.terraform.io/datadog/datadog",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "id": null,
+          "name": "[P2][scheduler] Trigger stopped queueing",
+          "type": "query alert",
+          "query": "sum(last_30m):sum:scheduler.runs.queued{env:demo,service:scheduler} by {trigger}.as_count() < 1",
+          "message": "A trigger has published nothing for 30m.\n\nRunbook: https://runbooks.example.internal/scheduler/triggers\n@slack-scheduler-alerts\n",
+          "escalation_message": null,
+          "tags": [
+            "team:platform",
+            "service:scheduler",
+            "env:demo"
+          ],
+          "priority": "2",
+          "monitor_thresholds": [
+            {
+              "critical": "1",
+              "critical_recovery": "2",
+              "ok": null,
+              "unknown": null,
+              "warning": null,
+              "warning_recovery": null
+            }
+          ],
+          "notify_no_data": true,
+          "no_data_timeframe": 10,
+          "new_group_delay": null,
+          "new_host_delay": 300,
+          "evaluation_delay": null,
+          "require_full_window": false,
+          "on_missing_data": null,
+          "include_tags": true,
+          "notify_audit": false,
+          "renotify_interval": null,
+          "timeout_h": null,
+          "restricted_roles": null
+        },
+        "after_unknown": {
+          "id": true,
+          "evaluation_delay": true
+        },
+        "before_sensitive": false,
+        "after_sensitive": {}
+      }
+    }
+  ]
+}
