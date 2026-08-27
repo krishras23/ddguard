@@ -149,4 +149,4 @@ async function run(monitor, parsed, client, { days = 30 } = {}) {
   return [finding('pass', 'BACKTEST_OK', headline, { detail: `${plural(transitions, 'transition')} in ${days}d` })];
 }
 
-module.exports = { run, bucket, replay, compare };
+module.exports = { run, bucket, replay };
