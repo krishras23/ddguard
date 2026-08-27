@@ -32,10 +32,17 @@ jobs:
           make demo | tee out.txt
           grep -q 'ddguard exited 1' out.txt
           test "$(grep -c '^FAIL' out.txt)" = 3
+      # invoked directly, not via make: GNU make exits 2 on any recipe failure, so it
+      # cannot carry ddguard's own exit code, which is the thing being asserted here
       - name: markdown report to the job summary
         shell: bash
         run: |
           set -o pipefail
+          node mockdd/seed.js
+          node mockdd/server.js & mock=$!
+          until curl -sf -o /dev/null http://localhost:8126/health; do sleep 0.2; done
           status=0
-          make check | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          node ddguard/bin/ddguard.js fixtures/tfplan.json --days=30 --format=markdown \
+            | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          kill $mock
           test "$status" -eq 1 || { echo "::error::expected exit 1 from the fixture plan, got $status"; exit 1; }
