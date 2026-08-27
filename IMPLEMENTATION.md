@@ -100,7 +100,7 @@ mockdd/
 fixtures/
   monitors.tf              human-readable source of truth
   tfplan.json              committed; what ddguard actually eats
-.github/workflows/ddguard.yml
+.github/workflows/ci.yml
 Makefile
 ```
 
@@ -200,27 +200,78 @@ API must not block a merge.
 
 The differentiating feature. Everything else is table stakes.
 
+### Threshold source
+
+Terraform accepts the critical threshold in the query string alone, with no `monitor_thresholds`
+block, in which case `plan.js` reports `thresholds.critical: null`. The backtest uses
+`monitor.thresholds.critical ?? parsed.threshold`, so those monitors are still replayed. When both
+are present and disagree, that is a real config bug — Datadog evaluates the query — so emit a warn
+`THRESHOLD_MISMATCH` alongside the backtest, which runs at the `monitor_thresholds` value.
+
+### Resolution is the whole problem
+
+`/api/v1/query` rolls a range up to roughly 300 points per series. One 30-day request comes back
+at ~2h spacing; bucketing those rollups into 5-minute evaluation windows aggregates the aggregates and
+produces a number that looks like a verdict and is not one. `mockdd` serves raw 30s points at any
+range and so hides this entirely.
+
 ```
-1. series = client.query(dataQuery, now - days*86400, now)
-2. For each group (series entry):
-     bucket points into windowSeconds buckets
-     reduce each bucket with timeAggregator   (sum | avg | min | max)
-3. Replay the state machine over buckets, in order:
-     state = OK
-     for each bucket value v:
-       if state == OK    and compare(v, operator, critical)            -> state = ALERT; transitions++
-       if state == ALERT and NOT compare(v, operator, recoveryOrCrit)  -> state = OK
-   where recoveryOrCrit = critical_recovery ?? critical
-4. flaps = transitions where the ALERT lasted exactly one bucket
+chunk    = min(days*86400, 300 * windowSeconds)      // the largest slice that still comes back
+                                                     // at <= windowSeconds resolution
+requests = min(ceil(days*86400 / chunk), 32)         // hard cap
+covered  = min(days*86400, requests * chunk)
 ```
 
-**Reported as:**
+Slices are fetched in order and concatenated per `scope`, dropping any timestamp already seen at a
+chunk boundary. If the cap truncates the range, the finding names the range actually used
+(`asked for 30d, used 3.3d — a longer range comes back rolled up past the 30s window`) rather than
+claiming 30 days. A short honest window beats a long dishonest one.
+
+Then measure what actually came back: `resolution` = median gap between consecutive timestamps in
+the longest returned series, nulls included (Datadog pads rolled-up series with nulls at the rollup
+interval, so the padding carries the resolution).
+
+If `resolution > windowSeconds` the replay cannot be reconstructed and there is nothing honest to
+guess. Return warn `CHECK_UNAVAILABLE`:
+
 ```
-30-day backtest: 412 transitions   (180 of them single-bucket flaps)
+The metrics API returned 600s resolution for a 300s evaluation window —
+30 days cannot be reconstructed at this window.
 ```
+
+### Rolling replay
+
+Datadog does not evaluate Unix-aligned non-overlapping buckets. It aggregates the trailing
+`windowSeconds` every evaluation, about once a minute, so consecutive evaluations overlap by
+`window - cadence`.
+
+```
+cadence = min(windowSeconds, max(60, resolution))
+for t = first timestamp (rounded up to cadence) .. last, step cadence:
+    v = reduce(points in (t - windowSeconds, t], timeAggregator)   // sum | avg | min | max | count
+    state = OK
+    if state == OK    and compare(v, operator, critical)            -> state = ALERT; transitions++
+    if state == ALERT and NOT compare(v, operator, recoveryOrCrit)  -> state = OK
+  where recoveryOrCrit = critical_recovery ?? critical
+flaps = transitions where the ALERT lasted exactly one evaluation
+```
+
+This changes the counts, and in the right direction. A single 60s spike under a 5m window is one
+alert held open for five evaluations — not a one-bucket flap — and two spikes six minutes apart
+are two transitions, not one, where aligned bucketing merged them into adjacent alerting buckets.
+
+### Output
+
+```
+30-day backtest: 41 transitions (29 single-evaluation flaps) ≈ 10 pages/week
+reconstructed from 30s points, not Datadog's own evaluation history
+```
+
+The second line is the honesty clause: this is a reconstruction from the metric, not a replay of
+Datadog's evaluation history, which is not retrievable.
 
 **Verdicts:**
-| Transitions in 30d | Level | Message |
+| Transitions over the range used | Level | Message |
 |---|---|---|
 | 0 | warn `BACKTEST_NEVER_FIRES` | never would have fired — miscalibrated, or watching a dead metric |
 | 1–20 | pass | reasonable |
@@ -230,15 +281,16 @@ The differentiating feature. Everything else is table stakes.
 lands ≤20 transitions, then report which percentile it turned out to be.
 
 A fixed p90/p95/p99 ladder does **not** work, and this is worth stating because it is the
-non-obvious part: p99 of N buckets leaves N/100 buckets above the line by construction, so on a
-30-day 5-minute series it yields ~86 crossings *regardless of the metric*. The thresholds that
-actually quiet a monitor live around p99.8, which no fixed ladder reaches. Search, don't guess.
+non-obvious part: p99 of N evaluations leaves N/100 above the line by construction, so on a
+30-day series at a 1-minute cadence it yields hundreds of crossings *regardless of the metric*.
+The thresholds that actually quiet a monitor live around p99.8, which no fixed ladder reaches.
+Search, don't guess.
 
 A candidate that fires **zero** times is not a suggestion — return nothing rather than recommend
 a monitor that never fires, which is the thing this tool warns about elsewhere.
 
 ```
-suggestion: at critical=1200 (p99) this would have fired 6 times instead of 412
+suggestion: at critical=766 (p99.8) this would have fired 20 times instead of 1272
 ```
 
 If `critical_recovery` is unset, additionally report how many transitions are flaps that

@@ -53,8 +53,9 @@ FAIL  datadog_monitor.nginx_5xx_rate
 WARN  datadog_monitor.worker_queue_latency
       [P2][worker] Queue latency high
       backtest  BACKTEST_TOO_NOISY
-      30-day backtest: 712 transitions (170 single-bucket flaps) ≈ 166 pages/week
-      → at critical=676 (p99.8) this would have fired 20 times instead of 712
+      30-day backtest: 1273 transitions (4 single-evaluation flaps) ≈ 297 pages/week
+      reconstructed from 30s points, not Datadog's own evaluation history
+      → at critical=768 (p99.8) this would have fired 20 times instead of 1273
 
 PASS  datadog_monitor.worker_dead_letters
       [P1][worker] Dead-lettered jobs (demo)
@@ -78,9 +79,13 @@ The part that isn't a linter. It replays the monitor's own query, window, thresh
 against 30 days of history, runs the state machine, and counts real `OK → ALERT` transitions:
 
 ```
-30-day backtest: 712 transitions (170 single-bucket flaps) ≈ 166 pages/week
-→ at critical=676 (p99.8) this would have fired 20 times instead of 712
+30-day backtest: 1273 transitions (4 single-evaluation flaps) ≈ 297 pages/week
+reconstructed from 30s points, not Datadog's own evaluation history
+→ at critical=768 (p99.8) this would have fired 20 times instead of 1273
 ```
+
+Figures above are from the recorded run; they drift slightly between runs because the fixture
+data is anchored to the current time.
 
 That suggested threshold is **searched, not sampled from a percentile ladder** — which matters more
 than it sounds. p99 of N buckets leaves N/100 buckets above the line by construction, so on a 30-day
@@ -178,14 +183,20 @@ demo/          the recording and the script that produces it
 IMPLEMENTATION.md   design decisions and contracts
 ```
 
-Node, CommonJS, no runtime dependencies. `npm test` — 36 tests.
+Node, CommonJS, no runtime dependencies. `npm test` — 42 tests.
 
 ## Limitations
 
 - `query alert` monitors only. Log, APM, composite and SLO monitors are skipped silently.
 - `fixtures/tfplan.json` is maintained by hand alongside `monitors.tf`; there is no `terraform`
   binary in this repo to regenerate it.
-- The backtest reads whatever retention your metric actually has. A 30-day window against a metric
-  Datadog rolled up will replay the rolled-up values, not raw.
+- The backtest is a reconstruction, not a replay of Datadog's own evaluation history. It fetches
+  history in chunks sized to avoid the query API's automatic rollup, then rolls the monitor's
+  window forward at its evaluation cadence. When the API still returns points coarser than the
+  window, it reports that it cannot reconstruct rather than producing a verdict from rolled-up
+  values. Long ranges at short windows may be truncated to keep resolution; the finding says so.
+- Only `@pagerduty` handles are verified. Datadog exposes Slack channels only per account and
+  documents no endpoint listing accounts, so `@slack` handles are counted and reported as
+  unverified rather than guessed at.
 - `make demo` reports ddguard's exit code rather than propagating it, so the recipe reads cleanly.
   `make check` propagates; `make gate` is the same thing without mockdd.

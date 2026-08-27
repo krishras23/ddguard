@@ -87,7 +87,7 @@ function terminal(monitors, findings, { color }) {
       for (const f of row.findings.filter((x) => x.level !== 'pass')) {
         out.push(`      ${f.check}  ${c(f.level, f.code)}`);
         out.push(`      ${f.message}`);
-        if (f.detail) out.push(`      ${dim(f.detail)}`);
+        for (const line of (f.detail || '').split('\n').filter(Boolean)) out.push(`      ${dim(line)}`);
         for (const line of (f.suggestion || '').split('\n').filter(Boolean)) out.push(`      → ${line}`);
       }
     }
@@ -110,7 +110,7 @@ function markdown(monitors, findings) {
     const shown = row.level === 'pass' ? row.findings.slice(0, 1) : row.findings.filter((f) => f.level !== 'pass');
     for (const f of shown) {
       const check = row.level === 'pass' ? row.findings.map((x) => x.check).join(', ') : f.check;
-      const body = [f.message, f.detail, ...(f.suggestion || '').split('\n').filter(Boolean).map((s) => `→ ${s}`)]
+      const body = [f.message, ...(f.detail || '').split('\n').filter(Boolean), ...(f.suggestion || '').split('\n').filter(Boolean).map((s) => `→ ${s}`)]
         .filter(Boolean)
         .join('<br>');
       out.push(`| ${icon[row.level]} | \`${row.monitor.address}\` | ${check} | \`${f.code}\` | ${body} |`);

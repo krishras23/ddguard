@@ -83,7 +83,7 @@ resource "datadog_monitor" "scheduler_queue_rate" {
 resource "datadog_monitor" "nginx_5xx_rate" {
   name    = "[P1][nginx] 5xx rate high"
   type    = "query alert"
-  query   = "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx}.as_count() > 30"
+  query   = "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx}.as_count() > 32"
   message = <<-EOT
     The edge proxy is returning 5xx above the error budget burn rate.
 
@@ -92,7 +92,7 @@ resource "datadog_monitor" "nginx_5xx_rate" {
   EOT
 
   monitor_thresholds {
-    critical          = 30
+    critical          = 32
     critical_recovery = 15
   }
 

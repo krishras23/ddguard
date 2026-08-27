@@ -182,7 +182,7 @@
           "id": null,
           "name": "[P1][nginx] 5xx rate high",
           "type": "query alert",
-          "query": "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx}.as_count() > 30",
+          "query": "sum(last_5m):sum:nginx.requests{env:demo,service:nginx,status_class:5xx}.as_count() > 32",
           "message": "The edge proxy is returning 5xx above the error budget burn rate.\n\nRunbook: https://runbooks.example.internal/nginx/5xx\n@pagerduty-nginx-onclal @slack-nginx-alerts\n",
           "escalation_message": null,
           "tags": [
@@ -193,7 +193,7 @@
           "priority": "1",
           "monitor_thresholds": [
             {
-              "critical": "30",
+              "critical": "32",
               "critical_recovery": "15",
               "ok": null,
               "unknown": null,

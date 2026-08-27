@@ -18,14 +18,15 @@ ddguard  ·  8 monitors  ·  3 failed  ·  4 warnings
       [2m[P1][nginx] 5xx rate high[0m
       handles  [31mHANDLE_UNRESOLVED[0m
       @pagerduty-nginx-onclal does not resolve to a configured integration — notifications are silently dropped.
-      [2mknown: worker-oncall, nginx-oncall, scheduler-oncall[0m
+      [2mknown: @pagerduty-worker-oncall, @pagerduty-nginx-oncall, @pagerduty-scheduler-oncall[0m
       → Did you mean @pagerduty-nginx-oncall?
 
 [33mWARN[0m  datadog_monitor.worker_queue_latency
       [2m[P2][worker] Queue latency high[0m
       backtest  [33mBACKTEST_TOO_NOISY[0m
-      30-day backtest: 712 transitions (170 single-bucket flaps) ≈ 166 pages/week
-      → at critical=676 (p99.8) this would have fired 20 times instead of 712
+      30-day backtest: 1273 transitions (4 single-evaluation flaps) ≈ 297 pages/week
+      [2mreconstructed from 30s points, not Datadog's own evaluation history[0m
+      → at critical=768 (p99.8) this would have fired 20 times instead of 1273
 
 [33mWARN[0m  datadog_monitor.nginx_canary_errors
       [2m[P2][nginx] Canary 5xx elevated[0m
@@ -33,12 +34,18 @@ ddguard  ·  8 monitors  ·  3 failed  ·  4 warnings
       No critical_recovery — the monitor recovers the instant it drops below critical, so a value sitting on the threshold flaps.
       [2mcritical: 20[0m
       → Set critical_recovery to a value the metric must clearly return to before resolving.
+      backtest  [33mBACKTEST_TOO_NOISY[0m
+      30-day backtest: 41 transitions (29 single-evaluation flaps) ≈ 10 pages/week
+      [2mreconstructed from 30s points, not Datadog's own evaluation history[0m
+      → at critical=22 (p99.98) this would have fired 8 times instead of 41
+      → 29 of 41 are single-evaluation flaps; critical_recovery=10 alone brings this to 35
 
 [33mWARN[0m  datadog_monitor.worker_queue_depth
       [2m[P3][worker] Queue backlog[0m
       backtest  [33mBACKTEST_NEVER_FIRES[0m
       30-day backtest: 0 transitions — this monitor would never have fired.
-      [2mcritical > 999999; observed range 0..106 over 4321 buckets[0m
+      [2mcritical > 999999; observed range 0..107 over 43200 evaluations[0m
+      [2mreconstructed from 30s points, not Datadog's own evaluation history[0m
       → Either the threshold is miscalibrated or the metric is dead. Both are worth knowing before merge.
 
 [33mWARN[0m  datadog_monitor.scheduler_runs_by_trigger
