@@ -68,7 +68,7 @@ async function main() {
   });
 
   const findings = (await Promise.all(monitors.map((m) => inspect(m, client, opts)))).flat();
-  const color = process.stdout.isTTY && !process.env.NO_COLOR;
+  const color = (process.stdout.isTTY || process.env.FORCE_COLOR) && !process.env.NO_COLOR;
   console.log(report.render(monitors, findings, opts.format, { color }));
 
   return findings.some((f) => f.level === 'fail') ? 1 : 0;
