@@ -15,8 +15,7 @@ const USAGE = `usage: ddguard [plan.json] [--format=terminal|markdown|json] [--n
 
   DD_API_URL   metrics API base (default http://localhost:8126)
   DD_API_KEY   required by real Datadog, ignored by mockdd
-  DD_APP_KEY   required by real Datadog, ignored by mockdd
-  DD_SLACK_ACCOUNT  Slack account name; required to verify @slack handles`;
+  DD_APP_KEY   required by real Datadog, ignored by mockdd`;
 
 function parseArgs(argv) {
   const opts = { path: 'fixtures/tfplan.json', format: 'terminal', backtest: true, days: 30 };
@@ -79,14 +78,13 @@ async function main() {
     apiUrl: process.env.DD_API_URL || 'http://localhost:8126',
     apiKey: process.env.DD_API_KEY,
     appKey: process.env.DD_APP_KEY,
-    slackAccount: process.env.DD_SLACK_ACCOUNT,
   });
 
   const findings = (await pool(monitors, 4, (m) => inspect(m, client, opts))).flat();
   const color = (process.stdout.isTTY || process.env.FORCE_COLOR) && !process.env.NO_COLOR;
   console.log(report.render(monitors, findings, opts.format, { color }));
 
-  return findings.some((f) => f.level === 'fail') ? 1 : 0;
+  return report.exitCode(monitors, findings, (msg) => console.error(`ddguard: ${msg}`));
 }
 
 main().then(

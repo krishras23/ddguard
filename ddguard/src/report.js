@@ -3,6 +3,9 @@ const COLOR = { fail: '\x1b[31m', warn: '\x1b[33m', pass: '\x1b[32m' };
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 
+const NETWORK_CHECKS = new Set(['liveness', 'handles', 'backtest']);
+const AUTH_STATUS = /\b(401|403)\b/;
+
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function group(monitors, findings) {
@@ -23,12 +26,51 @@ function counts(rows) {
   };
 }
 
+// A single check degrading to CHECK_UNAVAILABLE is a warning on purpose — a flaky API must not
+// block a PR. Every check on every monitor degrading is a different thing: nothing was verified,
+// and that must not exit 0 just because nothing came back to fail on.
+function verify(monitors, findings) {
+  const unavailable = findings.filter((f) => f.code === 'CHECK_UNAVAILABLE');
+  const verified = new Set(
+    findings.filter((f) => NETWORK_CHECKS.has(f.check) && f.code !== 'CHECK_UNAVAILABLE').map((f) => f.monitor)
+  );
+  const auth = unavailable.find((f) => AUTH_STATUS.test(f.detail || ''));
+
+  let blocked = null;
+  if (auth) {
+    blocked = `the API rejected our credentials (${auth.detail}) — nothing was verified. Check DD_API_KEY and DD_APP_KEY.`;
+  } else if (unavailable.length && !verified.size) {
+    blocked = `not one of ${plural(monitors.length, 'monitor')} could be verified — every network check came back unavailable.`;
+  }
+
+  return { verified: verified.size, unverified: monitors.length - verified.size, unavailable: unavailable.length, blocked };
+}
+
+function exitCode(monitors, findings, note = () => {}) {
+  const { blocked } = verify(monitors, findings);
+  if (blocked) {
+    note(blocked);
+    return 2;
+  }
+  return findings.some((f) => f.level === 'fail') ? 1 : 0;
+}
+
+function headline(monitors, findings, rows) {
+  const n = counts(rows);
+  const { unverified } = verify(monitors, findings);
+  return [
+    plural(n.monitors, 'monitor'),
+    `${n.failed} failed`,
+    plural(n.warnings, 'warning'),
+    unverified ? `${unverified} unverified` : null,
+  ].filter(Boolean);
+}
+
 function terminal(monitors, findings, { color }) {
   const c = (level, s) => (color ? COLOR[level] + s + RESET : s);
   const dim = (s) => (color ? DIM + s + RESET : s);
   const rows = group(monitors, findings);
-  const n = counts(rows);
-  const out = [`ddguard  ·  ${plural(n.monitors, 'monitor')}  ·  ${n.failed} failed  ·  ${plural(n.warnings, 'warning')}`, ''];
+  const out = [['ddguard', ...headline(monitors, findings, rows)].join('  ·  '), ''];
 
   for (const row of rows) {
     out.push(`${c(row.level, row.level.toUpperCase().padEnd(4))}  ${row.monitor.address}`);
@@ -56,10 +98,9 @@ function terminal(monitors, findings, { color }) {
 
 function markdown(monitors, findings) {
   const rows = group(monitors, findings);
-  const n = counts(rows);
   const icon = { fail: '❌', warn: '⚠️', pass: '✅' };
   const out = [
-    `### ddguard — ${plural(n.monitors, 'monitor')}, ${n.failed} failed, ${plural(n.warnings, 'warning')}`,
+    `### ddguard — ${headline(monitors, findings, rows).join(', ')}`,
     '',
     '| | Monitor | Check | Code | Detail |',
     '|---|---|---|---|---|',
@@ -84,4 +125,4 @@ function render(monitors, findings, format, { color = false } = {}) {
   return terminal(monitors, findings, { color });
 }
 
-module.exports = { render };
+module.exports = { render, verify, exitCode };
