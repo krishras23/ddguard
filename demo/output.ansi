@@ -1,0 +1,56 @@
+ddguard  ·  8 monitors  ·  3 failed  ·  4 warnings
+
+[31mFAIL[0m  datadog_monitor.worker_processed_drop
+      [2m[P1][worker] Jobs processed drop[0m
+      liveness  [31mNO_SERIES[0m
+      Query returned 0 series over the last 24h — this monitor can never fire.
+      [2mmetric: worker.runs.procesed[0m
+      → Did you mean worker.runs.processed?
+
+[31mFAIL[0m  datadog_monitor.scheduler_queue_rate
+      [2m[P2][scheduler] Queue rate below floor[0m
+      liveness  [31mNO_SERIES[0m
+      Query returned 0 series over the last 24h — this monitor can never fire.
+      [2mmetric: scheduler.runs.queued[0m
+      → scheduler.runs.queued exists but reports nothing for {env:prod, service:scheduler} — check the scope tags.
+
+[31mFAIL[0m  datadog_monitor.nginx_5xx_rate
+      [2m[P1][nginx] 5xx rate high[0m
+      handles  [31mHANDLE_UNRESOLVED[0m
+      @pagerduty-nginx-onclal does not resolve to a configured integration — notifications are silently dropped.
+      [2mknown: worker-oncall, nginx-oncall, scheduler-oncall[0m
+      → Did you mean @pagerduty-nginx-oncall?
+
+[33mWARN[0m  datadog_monitor.worker_queue_latency
+      [2m[P2][worker] Queue latency high[0m
+      backtest  [33mBACKTEST_TOO_NOISY[0m
+      30-day backtest: 712 transitions (170 single-bucket flaps) ≈ 166 pages/week
+      → at critical=676 (p99.8) this would have fired 20 times instead of 712
+
+[33mWARN[0m  datadog_monitor.nginx_canary_errors
+      [2m[P2][nginx] Canary 5xx elevated[0m
+      config  [33mNO_HYSTERESIS[0m
+      No critical_recovery — the monitor recovers the instant it drops below critical, so a value sitting on the threshold flaps.
+      [2mcritical: 20[0m
+      → Set critical_recovery to a value the metric must clearly return to before resolving.
+
+[33mWARN[0m  datadog_monitor.worker_queue_depth
+      [2m[P3][worker] Queue backlog[0m
+      backtest  [33mBACKTEST_NEVER_FIRES[0m
+      30-day backtest: 0 transitions — this monitor would never have fired.
+      [2mcritical > 999999; observed range 0..106 over 4321 buckets[0m
+      → Either the threshold is miscalibrated or the metric is dead. Both are worth knowing before merge.
+
+[33mWARN[0m  datadog_monitor.scheduler_runs_by_trigger
+      [2m[P2][scheduler] Trigger stopped queueing[0m
+      config  [33mMISSING_GROUP_DELAY[0m
+      Grouped by {trigger} with no new_group_delay — every new group alerts before it has data.
+      → Set new_group_delay to at least one evaluation window (300s is a common floor).
+      config  [33mNO_DATA_TOO_SHORT[0m
+      no_data_timeframe is 10m but the evaluation window is 30m — no-data will fire on ordinary reporting gaps.
+      → Raise no_data_timeframe to at least 60m (2x the window).
+
+[32mPASS[0m  datadog_monitor.worker_dead_letters
+      [2m[P1][worker] Dead-lettered jobs (demo)[0m
+      config [32m✓[0m  liveness [32m✓[0m (1 series)  handles [32m✓[0m  backtest [32m✓[0m (1 transition in 30d)
+
