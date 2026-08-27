@@ -1,0 +1,13 @@
+{
+  "name": "scheduler-nginx",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "amqplib": "^0.10.8"
+  },
+  "scripts": {
+    "start:web": "node apps/web/server.js",
+    "start:scheduler": "node apps/scheduler/scheduler.js",
+    "start:worker": "node apps/worker/worker.js"
+  }
+}
