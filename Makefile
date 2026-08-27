@@ -26,7 +26,7 @@ run: seed
 	@node mockdd/server.js & \
 	pid=$$!; \
 	trap "kill $$pid 2>/dev/null" INT TERM; \
-	for _ in $$(seq 1 50); do curl -s -o /dev/null $(DD_API_URL)/ && break || sleep 0.2; done; \
+	for _ in $$(seq 1 50); do curl -s -o /dev/null $(DD_API_URL)/health && break || sleep 0.2; done; \
 	DD_API_URL=$(DD_API_URL) node ddguard/bin/ddguard.js $(PLAN) --days=$(DAYS) $(FORMAT_FLAG); \
 	status=$$?; \
 	kill $$pid 2>/dev/null; \
