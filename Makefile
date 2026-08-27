@@ -8,7 +8,7 @@ TAIL        ?= exit $$status
 
 export PORT
 
-.PHONY: seed mockdd demo check run certs clean
+.PHONY: seed mockdd demo check run clean
 
 seed:
 	node mockdd/seed.js
@@ -32,12 +32,6 @@ run: seed
 	kill $$pid 2>/dev/null; \
 	wait $$pid 2>/dev/null; \
 	$(TAIL)
-
-certs:
-	@mkdir -p infra/nginx/certs
-	openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-	  -keyout infra/nginx/certs/local.key -out infra/nginx/certs/local.crt \
-	  -subj "/CN=localhost"
 
 clean:
 	rm -rf data/fixture

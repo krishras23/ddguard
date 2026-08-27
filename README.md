@@ -114,9 +114,9 @@ Exit `0` clean · `1` findings · `2` tool error. `--format=markdown` for a PR c
 so `make demo` works on a clean checkout with no signup. **It is not a metrics database and does not
 pretend to be one.** It exists so the tool can be seen working in one command.
 
-The workload it models is real: an nginx edge with a canary split, three web instances, and a
-scheduler publishing to RabbitMQ with a worker doing retry and dead-letter handling.
-See [docs/demo-stack.md](docs/demo-stack.md).
+The metric names it serves (`worker.runs.processed`, `nginx.requests`, `worker.queue.latency`)
+are the shapes a scheduler, queue worker and edge proxy actually emit, so the fixture monitors
+read like monitors someone would really write.
 
 ## Layout
 
@@ -124,8 +124,8 @@ See [docs/demo-stack.md](docs/demo-stack.md).
 ddguard/       the CLI — plan parser, query parser, four checks, reporters
 mockdd/        Datadog-shaped API + fixture generator
 fixtures/      monitors.tf and the tfplan.json ddguard reads
-apps/ infra/   the demo workload
-docs/          demo stack notes, metrics primer
+demo/          the recording and the script that produces it
+docs/          metrics primer
 IMPLEMENTATION.md   design decisions and contracts
 ```
 
