@@ -16,6 +16,8 @@ outage.
 `ddguard` reads a Terraform plan and answers three questions Datadog cannot answer at plan time:
 **will this monitor ever fire, how often would it have fired last month, and will anyone hear it.**
 
+![ddguard catching three monitors that would never have paged anyone](demo/ddguard.gif)
+
 ## Try it
 
 No Datadog account, no API keys, no `terraform` binary:
