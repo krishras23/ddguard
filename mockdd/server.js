@@ -15,11 +15,9 @@ const fixture = JSON.parse(zlib.gunzipSync(fs.readFileSync(FIXTURE)));
 const { interval, count, series } = fixture;
 const start = Math.floor(Date.now() / 1000) - (count - 1) * interval;
 
-const SLACK_CHANNELS = [
-  { name: '#worker-alerts' },
-  { name: '#scheduler-alerts' },
-  { name: '#nginx-alerts' },
-  { name: '#platform-oncall' }
+const SLACK_ACCOUNTS = [
+  { account_name: 'main', channels: ['#worker-alerts', '#scheduler-alerts', '#nginx-alerts'] },
+  { account_name: 'platform', channels: ['#platform-oncall'] }
 ];
 
 const PAGERDUTY_SERVICES = [
@@ -116,7 +114,12 @@ const server = http.createServer((req, res) => {
     return send(res, 200, { results: { metrics: term ? names : [] } });
   }
 
-  if (p === '/api/v1/integration/slack/channels') return send(res, 200, SLACK_CHANNELS);
+  const slackChannels = /^\/api\/v1\/integration\/slack\/configuration\/accounts\/([^/]+)\/channels$/.exec(p);
+  if (slackChannels) {
+    const account = SLACK_ACCOUNTS.find((a) => a.account_name === decodeURIComponent(slackChannels[1]));
+    if (!account) return send(res, 404, { errors: ['Slack account not found'] });
+    return send(res, 200, account.channels.map((name) => ({ name, display: { message: true, notified: true, snapshot: true, tags: true } })));
+  }
   if (p === '/api/v1/integration/pagerduty') return send(res, 200, { services: PAGERDUTY_SERVICES });
   if (p === '/health') return send(res, 200, { status: 'ok' });
 
