@@ -129,7 +129,7 @@ docs/          demo stack notes, metrics primer
 IMPLEMENTATION.md   design decisions and contracts
 ```
 
-Node, CommonJS, no runtime dependencies. `node --test 'ddguard/test/*.test.js'` — 21 tests.
+Node, CommonJS, no runtime dependencies. `npm test` — 21 tests.
 
 ## Limitations
 
