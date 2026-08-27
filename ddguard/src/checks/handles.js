@@ -24,28 +24,39 @@ async function run(monitor, client) {
     return [finding('warn', 'NO_HANDLE', 'No @handle in the message — this monitor alerts into the void.')];
   }
 
-  let channels, services;
-  try {
-    [channels, services] = await Promise.all([client.slackChannels(), client.pagerdutyServices()]);
-  } catch (err) {
-    return [finding('warn', 'CHECK_UNAVAILABLE', 'Could not reach the integrations API — handles unverified.', { detail: err.message })];
-  }
+  const [slackRes, pagerdutyRes] = await Promise.allSettled([client.slackChannels(), client.pagerdutyServices()]);
 
-  const slack = channels.map((c) => c.name.replace(/^#/, ''));
-  const pagerduty = services.map((s) => s.service_name);
+  const providers = {
+    Slack: {
+      prefix: 'slack-',
+      known: slackRes.status === 'fulfilled' ? slackRes.value.map((c) => c.name.replace(/^#/, '')) : null,
+      error: slackRes.reason && slackRes.reason.message,
+      unverified: [],
+    },
+    PagerDuty: {
+      prefix: 'pagerduty-',
+      known: pagerdutyRes.status === 'fulfilled' ? pagerdutyRes.value.map((s) => s.service_name) : null,
+      error: pagerdutyRes.reason && pagerdutyRes.reason.message,
+      unverified: [],
+    },
+  };
   const findings = [];
 
   for (const handle of handles) {
     if (handle.includes('@')) continue;
 
-    let known, target;
-    if (handle.startsWith('slack-')) [known, target] = [slack, handle.slice(6)];
-    else if (handle.startsWith('pagerduty-')) [known, target] = [pagerduty, handle.slice(10)];
-    else {
+    const provider = Object.values(providers).find((p) => handle.startsWith(p.prefix));
+    if (!provider) {
       findings.push(finding('warn', 'HANDLE_UNCHECKED', `@${handle} is not a Slack, PagerDuty or email handle — ddguard cannot verify it resolves.`));
       continue;
     }
+    if (!provider.known) {
+      provider.unverified.push(handle);
+      continue;
+    }
 
+    const known = provider.known;
+    const target = handle.slice(provider.prefix.length);
     if (known.some((k) => target === k || target.endsWith(`-${k}`))) continue;
 
     const guess = nearest(target, known);
@@ -53,6 +64,11 @@ async function run(monitor, client) {
       detail: `known: ${known.join(', ') || '(none)'}`,
       suggestion: guess ? `Did you mean @${handle.slice(0, handle.length - target.length)}${guess}?` : undefined,
     }));
+  }
+
+  for (const [name, p] of Object.entries(providers)) {
+    if (!p.unverified.length) continue;
+    findings.push(finding('warn', 'CHECK_UNAVAILABLE', `Could not reach the ${name} integration API — ${p.unverified.map((h) => `@${h}`).join(', ')} unverified.`, { detail: p.error }));
   }
 
   if (!findings.length) {
