@@ -38,7 +38,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
 
       # amd64 only, loaded locally, so the smoke test below runs the exact image built
       - uses: docker/build-push-action@v6
@@ -76,6 +75,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: |
+          set -o pipefail
           {
             echo 'Pull it and run it — the demo needs no Datadog account and no keys.'
             echo
@@ -88,5 +88,14 @@ jobs:
             echo '```bash'
             echo "docker run --rm -v \"\$PWD:/w\" -w /w $IMAGE:$TAG plan.json --format=markdown"
             echo '```'
+            echo
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body
           } > notes.md
-          gh release create "$TAG" --title "$TAG" --notes-file notes.md --generate-notes
+          # re-tagging a released version is a normal thing to do (a fixed message, a moved
+          # tag), and `create` 422s on the second run. Publishing the image but failing the
+          # release leaves the two out of step, so this step has to be repeatable.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TAG" --notes-file notes.md --verify-tag
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file notes.md
+          fi
