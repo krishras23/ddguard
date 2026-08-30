@@ -126,18 +126,22 @@ async function fetchRange(client, dataQuery, from, to, chunkSeconds) {
   const byScope = new Map();
   for (let start = from; start < to; start += chunkSeconds) {
     const res = await client.query(dataQuery, start, Math.min(start + chunkSeconds, to));
-    for (const s of res.series || []) {
-      const key = s.scope || s.metric || '';
-      const seen = byScope.get(key);
-      if (!seen) {
-        byScope.set(key, { ...s, pointlist: [...(s.pointlist || [])] });
-        continue;
-      }
-      const lastMs = seen.pointlist.length ? seen.pointlist[seen.pointlist.length - 1][0] : -Infinity;
-      for (const p of s.pointlist || []) if (p[0] > lastMs) seen.pointlist.push(p);
-    }
+    for (const s of res.series || []) merge(byScope, s);
   }
   return [...byScope.values()];
+}
+
+// Chunks overlap at their edges and arrive in order, so a series already seen keeps only the
+// points newer than its last one.
+function merge(byScope, s) {
+  const key = s.scope || s.metric || '';
+  const seen = byScope.get(key);
+  if (!seen) {
+    byScope.set(key, { ...s, pointlist: [...pointsOf(s)] });
+    return;
+  }
+  const lastMs = seen.pointlist.length ? seen.pointlist[seen.pointlist.length - 1][0] : -Infinity;
+  for (const p of pointsOf(s)) if (p[0] > lastMs) seen.pointlist.push(p);
 }
 
 function daysLabel(seconds) {
@@ -145,97 +149,154 @@ function daysLabel(seconds) {
   return `${d >= 10 ? Math.round(d) : Number(d.toFixed(1))}-day`;
 }
 
-async function run(monitor, parsed, client, { days = 30 } = {}) {
-  if (!parsed) return [];
-  const declared = monitor.thresholds.critical;
-  const critical = declared ?? parsed.threshold;
-  if (critical === null || critical === undefined) return [];
-
-  const finding = (level, code, message, extra) => ({
+function findingFor(monitor) {
+  return (level, code, message, extra) => ({
     monitor: monitor.address, check: CHECK, level, code, message, ...extra,
   });
+}
 
-  const findings = [];
-  if (declared !== null && declared !== undefined && declared !== parsed.threshold) {
-    findings.push(finding('warn', 'THRESHOLD_MISMATCH',
-      `monitor_thresholds.critical is ${declared} but the query compares against ${parsed.threshold}.`, {
-        detail: `backtested at ${critical}`,
-        suggestion: 'Datadog evaluates the threshold in the query string — make the two match.',
-      }));
-  }
+// The threshold in the query string is the one Datadog evaluates; monitor_thresholds.critical
+// is what the plan claims. Backtest the former and report the disagreement.
+function thresholdMismatch(finding, declared, parsed, critical) {
+  if (declared === null || declared === undefined || declared === parsed.threshold) return [];
+  return [finding('warn', 'THRESHOLD_MISMATCH',
+    `monitor_thresholds.critical is ${declared} but the query compares against ${parsed.threshold}.`, {
+      detail: `backtested at ${critical}`,
+      suggestion: 'Datadog evaluates the threshold in the query string — make the two match.',
+    })];
+}
 
+// How much history can be asked for at this window before the API rolls it up past the point
+// where evaluations can be reconstructed, and how to slice it.
+function planRange(days, windowSeconds) {
   const to = Math.floor(Date.now() / 1000);
   const requested = days * 86400;
-  const chunkSeconds = Math.min(requested, POINTS_PER_RESPONSE * parsed.windowSeconds);
+  const chunkSeconds = Math.min(requested, POINTS_PER_RESPONSE * windowSeconds);
   const covered = Math.min(requested, Math.min(Math.ceil(requested / chunkSeconds), MAX_REQUESTS) * chunkSeconds);
-  const from = to - covered;
+  return { from: to - covered, to, chunkSeconds, covered, requested };
+}
+
+function longestPointlist(series) {
+  const longest = series.reduce((a, s) => (pointsOf(s).length > pointsOf(a).length ? s : a), { pointlist: [] });
+  return pointsOf(longest);
+}
+
+function pointsOf(series) {
+  return series.pointlist || [];
+}
+
+function reconstructionNotes(resolution, range, days, label, windowSeconds) {
+  const notes = [`reconstructed from ${resolution}s points, not Datadog's own evaluation history`];
+  if (range.covered < range.requested) {
+    notes.unshift(`asked for ${days}d, used ${label.replace('-day', 'd')} — a longer range comes back rolled up past the ${windowSeconds}s window`);
+  }
+  return notes.join('\n');
+}
+
+function tooCoarse(finding, resolution, parsed, label) {
+  return finding('warn', 'CHECK_UNAVAILABLE',
+    `The metrics API returned ${resolution}s resolution for a ${parsed.windowSeconds}s evaluation window — ${label.replace('-day', ' days')} cannot be reconstructed at this window.`, {
+      detail: 'Datadog rolls long ranges up automatically; aggregating those rollups into 5-minute evaluations would invent a result.',
+      suggestion: `Widen the monitor window past ${resolution}s, or re-run with a smaller --days.`,
+    });
+}
+
+// What to tell someone whose monitor pages 300 times a week: the threshold that would have
+// quieted it, and whether hysteresis alone would have.
+function quieterLines(ctx, counted) {
+  const { groups, all, parsed, critical, criticalRecovery } = ctx;
+  const lines = [];
+  const better = suggestThreshold(groups, all, parsed, critical, criticalRecovery);
+  if (better) {
+    lines.push(`at critical=${better.critical} (${better.label}) this would have fired ${better.transitions} times instead of ${counted.transitions}`);
+  }
+  if (criticalRecovery === null && counted.flaps) {
+    const half = replay(groups, parsed.operator, critical, critical / 2).transitions;
+    if (half < counted.transitions) {
+      lines.push(`${counted.flaps} of ${counted.transitions} are single-evaluation flaps; critical_recovery=${round(critical / 2)} alone brings this to ${half}`);
+    }
+  }
+  return lines;
+}
+
+function neverFires(finding, ctx) {
+  const { label, parsed, critical, all, detail } = ctx;
+  return finding('warn', 'BACKTEST_NEVER_FIRES',
+    `${label} backtest: 0 transitions — this monitor would never have fired.`, {
+      detail: `critical ${parsed.operator} ${critical}; observed range ${round(Math.min(...all))}..${round(Math.max(...all))} over ${all.length} evaluations\n${detail}`,
+      suggestion: 'Either the threshold is miscalibrated or the metric is dead. Both are worth knowing before merge.',
+    });
+}
+
+function tooNoisy(finding, ctx, counted, headline) {
+  const perWeek = Math.round((counted.transitions / (ctx.covered / 86400)) * 7);
+  return finding('warn', 'BACKTEST_TOO_NOISY', `${headline} ≈ ${perWeek} pages/week`, {
+    detail: ctx.detail,
+    suggestion: quieterLines(ctx, counted).join('\n') || undefined,
+  });
+}
+
+// The three things a replay can say: it never fires, it fires far too often, or it fires like
+// a monitor someone would want to be paged by.
+function verdict(finding, ctx, counted) {
+  const headline = `${ctx.label} backtest: ${plural(counted.transitions, 'transition')} (${plural(counted.flaps, 'single-evaluation flap')})`;
+  if (counted.transitions === 0) return neverFires(finding, ctx);
+  if (counted.transitions > NOISY_ABOVE) return tooNoisy(finding, ctx, counted, headline);
+  return finding('pass', 'BACKTEST_OK', headline, {
+    detail: `${plural(counted.transitions, 'transition')} in ${ctx.label.replace('-day', 'd')}`,
+  });
+}
+
+// The query string's threshold when the plan declares none; null when there is nothing to
+// backtest against.
+function criticalOf(monitor, parsed) {
+  const critical = monitor.thresholds.critical ?? parsed.threshold;
+  if (critical === null || critical === undefined) return null;
+  return critical;
+}
+
+// Series in, verdict out. Returns nothing when there is nothing to judge — an empty or
+// unreadable series is the liveness check's finding to make, not this one's.
+function judge(finding, ctx) {
+  const { monitor, parsed, critical, series, range, days } = ctx;
+  const resolution = resolutionOf(longestPointlist(series));
+  if (resolution === null) return [];
+
+  const label = daysLabel(range.covered);
+  if (resolution > parsed.windowSeconds) return tooCoarse(finding, resolution, parsed, label);
+
+  const cadence = Math.min(parsed.windowSeconds, Math.max(EVAL_CADENCE, resolution));
+  const groups = series.map((s) => roll(pointsOf(s), parsed.windowSeconds, cadence, parsed.timeAggregator));
+  const all = groups.flat();
+  if (!all.length) return [];
+
+  const criticalRecovery = monitor.thresholds.critical_recovery ?? null;
+  const counted = replay(groups, parsed.operator, critical, criticalRecovery ?? critical);
+  return verdict(finding, {
+    ...ctx, groups, all, label, criticalRecovery, covered: range.covered,
+    detail: reconstructionNotes(resolution, range, days, label, parsed.windowSeconds),
+  }, counted);
+}
+
+async function run(monitor, parsed, client, opts = {}) {
+  if (!parsed) return [];
+  const critical = criticalOf(monitor, parsed);
+  if (critical === null) return [];
+
+  const days = opts.days ?? 30;
+  const finding = findingFor(monitor);
+  const findings = thresholdMismatch(finding, monitor.thresholds.critical, parsed, critical);
+  const range = planRange(days, parsed.windowSeconds);
 
   let series;
   try {
-    series = await fetchRange(client, parsed.dataQuery, from, to, chunkSeconds);
+    series = await fetchRange(client, parsed.dataQuery, range.from, range.to, range.chunkSeconds);
   } catch (err) {
     return findings.concat(finding('warn', 'CHECK_UNAVAILABLE',
       `Could not reach the metrics API — ${days}-day backtest skipped.`, { detail: err.message }));
   }
 
-  const longest = series.reduce((a, s) => ((s.pointlist || []).length > (a.pointlist || []).length ? s : a), { pointlist: [] });
-  const resolution = resolutionOf(longest.pointlist || []);
-  if (resolution === null) return findings;
-
-  const label = daysLabel(covered);
-  if (resolution > parsed.windowSeconds) {
-    return findings.concat(finding('warn', 'CHECK_UNAVAILABLE',
-      `The metrics API returned ${resolution}s resolution for a ${parsed.windowSeconds}s evaluation window — ${label.replace('-day', ' days')} cannot be reconstructed at this window.`, {
-        detail: 'Datadog rolls long ranges up automatically; aggregating those rollups into 5-minute evaluations would invent a result.',
-        suggestion: `Widen the monitor window past ${resolution}s, or re-run with a smaller --days.`,
-      }));
-  }
-
-  const cadence = Math.min(parsed.windowSeconds, Math.max(EVAL_CADENCE, resolution));
-  const groups = series.map((s) => roll(s.pointlist || [], parsed.windowSeconds, cadence, parsed.timeAggregator));
-  const all = groups.flat();
-  if (!all.length) return findings;
-
-  const notes = [`reconstructed from ${resolution}s points, not Datadog's own evaluation history`];
-  if (covered < requested) {
-    notes.unshift(`asked for ${days}d, used ${label.replace('-day', 'd')} — a longer range comes back rolled up past the ${parsed.windowSeconds}s window`);
-  }
-  const detail = notes.join('\n');
-
-  const criticalRecovery = monitor.thresholds.critical_recovery ?? null;
-  const { transitions, flaps } = replay(groups, parsed.operator, critical, criticalRecovery ?? critical);
-  const headline = `${label} backtest: ${plural(transitions, 'transition')} (${plural(flaps, 'single-evaluation flap')})`;
-
-  if (transitions === 0) {
-    return findings.concat(finding('warn', 'BACKTEST_NEVER_FIRES',
-      `${label} backtest: 0 transitions — this monitor would never have fired.`, {
-        detail: `critical ${parsed.operator} ${critical}; observed range ${round(Math.min(...all))}..${round(Math.max(...all))} over ${all.length} evaluations\n${detail}`,
-        suggestion: 'Either the threshold is miscalibrated or the metric is dead. Both are worth knowing before merge.',
-      }));
-  }
-
-  if (transitions > NOISY_ABOVE) {
-    const perWeek = Math.round((transitions / (covered / 86400)) * 7);
-    const lines = [];
-    const better = suggestThreshold(groups, all, parsed, critical, criticalRecovery);
-    if (better) {
-      lines.push(`at critical=${better.critical} (${better.label}) this would have fired ${better.transitions} times instead of ${transitions}`);
-    }
-    if (criticalRecovery === null && flaps) {
-      const half = replay(groups, parsed.operator, critical, critical / 2).transitions;
-      if (half < transitions) {
-        lines.push(`${flaps} of ${transitions} are single-evaluation flaps; critical_recovery=${round(critical / 2)} alone brings this to ${half}`);
-      }
-    }
-    return findings.concat(finding('warn', 'BACKTEST_TOO_NOISY', `${headline} ≈ ${perWeek} pages/week`, {
-      detail,
-      suggestion: lines.join('\n') || undefined,
-    }));
-  }
-
-  return findings.concat(finding('pass', 'BACKTEST_OK', headline, {
-    detail: `${plural(transitions, 'transition')} in ${label.replace('-day', 'd')}`,
-  }));
+  return findings.concat(judge(finding, { monitor, parsed, critical, series, range, days }));
 }
 
 module.exports = { run, roll, replay, resolutionOf };

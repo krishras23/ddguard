@@ -17,19 +17,27 @@ const USAGE = `usage: ddguard [plan.json] [--format=terminal|markdown|json] [--n
   DD_API_KEY   required by real Datadog, ignored by mockdd
   DD_APP_KEY   required by real Datadog, ignored by mockdd`;
 
+const FORMATS = ['terminal', 'markdown', 'json'];
+
 function parseArgs(argv) {
   const opts = { path: 'fixtures/tfplan.json', format: 'terminal', backtest: true, days: 30 };
-  for (const arg of argv) {
-    if (arg === '--help' || arg === '-h') opts.help = true;
-    else if (arg === '--no-backtest') opts.backtest = false;
-    else if (arg.startsWith('--format=')) opts.format = arg.slice(9);
-    else if (arg.startsWith('--days=')) opts.days = Number(arg.slice(7));
-    else if (arg.startsWith('-')) throw new Error(`unknown flag ${arg}`);
-    else opts.path = arg;
-  }
-  if (!['terminal', 'markdown', 'json'].includes(opts.format)) throw new Error(`unknown format ${opts.format}`);
-  if (!Number.isInteger(opts.days) || opts.days < 1) throw new Error('--days must be a positive integer');
+  for (const arg of argv) applyArg(opts, arg);
+  reject(opts);
   return opts;
+}
+
+function applyArg(opts, arg) {
+  if (arg === '--help' || arg === '-h') opts.help = true;
+  else if (arg === '--no-backtest') opts.backtest = false;
+  else if (arg.startsWith('--format=')) opts.format = arg.slice(9);
+  else if (arg.startsWith('--days=')) opts.days = Number(arg.slice(7));
+  else if (arg.startsWith('-')) throw new Error(`unknown flag ${arg}`);
+  else opts.path = arg;
+}
+
+function reject(opts) {
+  if (!FORMATS.includes(opts.format)) throw new Error(`unknown format ${opts.format}`);
+  if (!Number.isInteger(opts.days) || opts.days < 1) throw new Error('--days must be a positive integer');
 }
 
 async function pool(items, limit, fn) {

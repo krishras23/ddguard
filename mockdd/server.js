@@ -88,31 +88,37 @@ function send(res, status, body) {
   res.end(json);
 }
 
+// One handler per path, so adding a Datadog endpoint is a line here rather than another
+// branch in the dispatcher.
+const ROUTES = {
+  '/api/v1/query': queryRoute,
+  '/api/v1/search': searchRoute,
+  '/api/v1/integration/pagerduty': (url, res) => send(res, 200, { services: PAGERDUTY_SERVICES }),
+  '/health': (url, res) => send(res, 200, { status: 'ok' }),
+};
+
+function queryRoute(url, res) {
+  const query = url.searchParams.get('query');
+  const from = Number(url.searchParams.get('from'));
+  const to = Number(url.searchParams.get('to'));
+  if (!query || !Number.isFinite(from) || !Number.isFinite(to)) {
+    return send(res, 400, { status: 'error', errors: ['query, from and to are required'] });
+  }
+  send(res, 200, { status: 'ok', query, from_date: from * 1000, to_date: to * 1000, series: evaluate(query, from, to) });
+}
+
+function searchRoute(url, res) {
+  const q = url.searchParams.get('q') || '';
+  const term = q.startsWith('metrics:') ? q.slice(8) : q;
+  const names = [...new Set(series.map((s) => s.metric))].filter((n) => n.includes(term)).sort();
+  send(res, 200, { results: { metrics: term ? names : [] } });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  const p = url.pathname;
-
-  if (p === '/api/v1/query') {
-    const query = url.searchParams.get('query');
-    const from = Number(url.searchParams.get('from'));
-    const to = Number(url.searchParams.get('to'));
-    if (!query || !Number.isFinite(from) || !Number.isFinite(to)) {
-      return send(res, 400, { status: 'error', errors: ['query, from and to are required'] });
-    }
-    return send(res, 200, { status: 'ok', query, from_date: from * 1000, to_date: to * 1000, series: evaluate(query, from, to) });
-  }
-
-  if (p === '/api/v1/search') {
-    const q = url.searchParams.get('q') || '';
-    const term = q.startsWith('metrics:') ? q.slice(8) : q;
-    const names = [...new Set(series.map((s) => s.metric))].filter((n) => n.includes(term)).sort();
-    return send(res, 200, { results: { metrics: term ? names : [] } });
-  }
-
-  if (p === '/api/v1/integration/pagerduty') return send(res, 200, { services: PAGERDUTY_SERVICES });
-  if (p === '/health') return send(res, 200, { status: 'ok' });
-
-  send(res, 404, { errors: [`404 Not Found: ${p}`] });
+  const route = ROUTES[url.pathname];
+  if (!route) return send(res, 404, { errors: [`404 Not Found: ${url.pathname}`] });
+  route(url, res);
 });
 
 server.listen(PORT, () => {
