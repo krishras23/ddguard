@@ -46,3 +46,27 @@ jobs:
             | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
           kill $mock
           test "$status" -eq 1 || { echo "::error::expected exit 1 from the fixture plan, got $status"; exit 1; }
+
+  # builds the same image the release workflow ships, so a broken Dockerfile is caught
+  # on the PR rather than on the tag
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ddguard:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: the image catches the seeded defects
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          docker run --rm ddguard:ci | tee out.txt || status=$?
+          test "$status" -eq 1 || { echo "::error::expected exit 1 from the demo, got $status"; exit 1; }
+          test "$(grep -c '^FAIL' out.txt)" = 3
+          docker run --rm ddguard:ci --help | grep -q '^usage: ddguard'

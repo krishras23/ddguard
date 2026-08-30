@@ -1,0 +1,92 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # a tag that ships a broken CLI is worse than no tag
+      - run: npm test
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      # amd64 only, loaded locally, so the smoke test below runs the exact image built
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: ${{ env.IMAGE }}:smoke
+          cache-to: type=gha,mode=max
+          cache-from: type=gha
+
+      # the fixture plan is deliberately broken: a demo that exits 0 means the checks
+      # stopped running, and that is exactly the failure this tool exists to catch
+      - name: the image catches the seeded defects
+        shell: bash
+        run: |
+          set -o pipefail
+          status=0
+          docker run --rm ${{ env.IMAGE }}:smoke | tee out.txt || status=$?
+          test "$status" -eq 1 || { echo "::error::expected exit 1 from the demo, got $status"; exit 1; }
+          test "$(grep -c '^FAIL' out.txt)" = 3
+          docker run --rm ${{ env.IMAGE }}:smoke --help | grep -q '^usage: ddguard'
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+
+      - name: github release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          {
+            echo 'Pull it and run it — the demo needs no Datadog account and no keys.'
+            echo
+            echo '```bash'
+            echo "docker run --rm $IMAGE:$TAG"
+            echo '```'
+            echo
+            echo 'Against your own plan:'
+            echo
+            echo '```bash'
+            echo "docker run --rm -v \"\$PWD:/w\" -w /w $IMAGE:$TAG plan.json --format=markdown"
+            echo '```'
+          } > notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file notes.md --generate-notes

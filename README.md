@@ -20,11 +20,20 @@ outage.
 
 ## Try it
 
-No Datadog account, no API keys, no `terraform` binary:
+No Datadog account, no API keys, no `terraform` binary — from a checkout:
 
 ```bash
 make demo
 ```
+
+or without one, straight from the registry:
+
+```bash
+docker run --rm ghcr.io/krishras23/ddguard
+```
+
+Both run the same thing: mockdd serving 30 days of fixture data, and ddguard reading
+`fixtures/tfplan.json` against it.
 
 ```
 ddguard  ·  8 monitors  ·  3 failed  ·  4 warnings
@@ -94,6 +103,24 @@ actually quiet a monitor live around p99.8. A fixed p90/p95/p99 ladder can never
 
 A candidate that fires zero times is never suggested. Recommending a monitor that never fires is the
 thing this tool exists to prevent.
+
+## As a container
+
+The image carries the CLI, mockdd and the fixtures, and has no runtime dependencies to install.
+A bare `docker run` is the demo above; any arguments are passed to the CLI instead, so point it
+at your own plan by mounting the directory holding it:
+
+```bash
+docker run --rm \
+  -v "$PWD:/w" -w /w \
+  -e DD_API_URL=https://api.datadoghq.com \
+  -e DD_API_KEY -e DD_APP_KEY \
+  ghcr.io/krishras23/ddguard plan.json --format=markdown
+```
+
+Tags are `vX.Y.Z`, `X.Y` and `latest`; pin the first of those in CI. The image runs as a non-root
+user and exits with the same codes as the CLI, so it drops into the workflow below in place of the
+`setup-node` and `make gate` steps.
 
 ## Against real Datadog
 

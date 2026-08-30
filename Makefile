@@ -8,7 +8,7 @@ TAIL        ?= exit $$status
 
 export PORT
 
-.PHONY: seed mockdd demo check gate run clean
+.PHONY: seed mockdd demo check gate run image image-demo clean
 
 seed:
 	node mockdd/seed.js
@@ -36,6 +36,13 @@ run: seed
 	kill $$pid 2>/dev/null; \
 	wait $$pid 2>/dev/null; \
 	$(TAIL)
+
+image:
+	docker build -t ddguard:local .
+
+# same demo as `make demo`, through the shipped image
+image-demo: image
+	docker run --rm ddguard:local
 
 clean:
 	rm -rf data/fixture
