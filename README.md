@@ -214,7 +214,8 @@ Node, CommonJS, no runtime dependencies. `npm test` — 42 tests.
 
 ## Limitations
 
-- `query alert` monitors only. Log, APM, composite and SLO monitors are skipped silently.
+- Metric monitors only (`metric alert` and `query alert`). Log, APM, composite and SLO
+  monitors are skipped silently.
 - `fixtures/tfplan.json` is maintained by hand alongside `monitors.tf`; there is no `terraform`
   binary in this repo to regenerate it.
 - The backtest is a reconstruction, not a replay of Datadog's own evaluation history. It fetches

@@ -71,8 +71,8 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) return console.log(USAGE), 0;
 
-  const monitors = plan.load(opts.path).filter((m) => m.type === 'query alert');
-  if (!monitors.length) throw new Error(`no datadog_monitor query alerts in ${opts.path}`);
+  const monitors = plan.load(opts.path).filter(plan.isMetricMonitor);
+  if (!monitors.length) throw new Error(`no datadog_monitor metric alerts in ${opts.path}`);
 
   const client = createClient({
     apiUrl: process.env.DD_API_URL || 'http://localhost:8126',

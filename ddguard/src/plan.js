@@ -1,5 +1,11 @@
 const fs = require('fs');
 
+const METRIC_MONITOR_TYPES = new Set(['metric alert', 'query alert']);
+
+function isMetricMonitor(monitor) {
+  return METRIC_MONITOR_TYPES.has(monitor.type);
+}
+
 function num(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
@@ -52,4 +58,4 @@ function load(path) {
     .map(toMonitor);
 }
 
-module.exports = { load };
+module.exports = { isMetricMonitor, load };
