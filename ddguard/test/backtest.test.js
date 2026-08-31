@@ -219,7 +219,9 @@ test('resolution coarser than the window is unavailable, not a verdict', async (
   }
 });
 
-test('chunked requests keep the resolution inside the window that one request would not', async () => {
+test('chunked requests keep the resolution inside the window that one request would not', async (t) => {
+  const middayUtc = Math.floor(1_700_000_000 / 86400) * 86400 + 12 * 3600;
+  t.mock.method(Date, 'now', () => middayUtc * 1000);
   const dd = await rollupServer({ rawInterval: 60, valueAt: (t) => (t % 86400 < 1800 ? 900 : 10) });
   try {
     const to = Math.floor(Date.now() / 1000);
