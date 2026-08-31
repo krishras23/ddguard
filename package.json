@@ -1,6 +1,7 @@
 {
   "name": "ddguard",
   "private": true,
+  "license": "MIT",
   "type": "commonjs",
   "scripts": {
     "test": "node --test ddguard/test/*.test.js"
