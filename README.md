@@ -78,7 +78,7 @@ Eight fixture monitors: one deliberately correct, seven carrying one real defect
 | Check | Catches |
 |---|---|
 | `liveness` | Query returns zero series — typo'd metric, wrong scope tag, group-by that matches nothing |
-| `handles` | `@pagerduty-paymnets` — Datadog drops unresolvable handles silently, at every layer |
+| `handles` | `@pagerduty-paymnets` — Datadog drops unresolvable handles silently, at every layer; also any `@pagerduty-*` handle in an org with no PagerDuty integration connected |
 | `config` | Missing `critical_recovery`, `no_data_timeframe` under 2× the window, grouped monitors with no `new_group_delay` |
 | `backtest` | Replays 30 days through the state machine: monitors that never fire, and monitors that fire 700 times |
 
@@ -134,6 +134,11 @@ terraform plan -out=tfplan
 terraform show -json tfplan > plan.json
 node ddguard/bin/ddguard.js plan.json
 ```
+
+Trying it against an empty account, such as a trial? `DD_API_KEY=... make push` submits the last hour
+of the fixture series through the metrics intake, so `fixtures/tfplan.json` has something real to
+query. Datadog rejects points older than about an hour, so the backtest will say `1-hour backtest`
+and name that span in its notes rather than claim thirty days it never saw.
 
 Exit `0` clean · `1` findings that should block the merge · `2` ddguard could not do its job.
 `--format=markdown` for a PR comment, `--format=json` to pipe, `--no-backtest` to skip the slow

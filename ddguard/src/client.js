@@ -25,7 +25,11 @@ function get(base, path, params, headers) {
       res.on('aborted', () => reject(new Error(`${url.host}: connection reset mid-response`)));
       res.on('error', (err) => reject(new Error(`${url.host}: ${err.code || err.message}`)));
       res.on('end', () => {
-        if (res.statusCode >= 400) return reject(new Error(`${res.statusCode} ${url.pathname}`));
+        if (res.statusCode >= 400) {
+          const err = new Error(`${res.statusCode} ${url.pathname}`);
+          err.status = res.statusCode;
+          return reject(err);
+        }
         try {
           resolve(JSON.parse(body));
         } catch {

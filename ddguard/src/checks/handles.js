@@ -25,11 +25,18 @@ async function run(monitor, client) {
     return [finding('warn', 'NO_HANDLE', 'No @handle in the message — this monitor alerts into the void.')];
   }
 
+  // A 404 is Datadog saying the PagerDuty integration is not connected to this org. That is
+  // not an outage: no @pagerduty-* handle can resolve, so each one is a real finding.
   let services;
+  let connected = true;
   try {
     services = await client.pagerdutyServices();
   } catch (err) {
-    return [finding('warn', 'CHECK_UNAVAILABLE', 'Could not reach the PagerDuty integration API — handles unverified.', { detail: err.message })];
+    if (err.status !== 404) {
+      return [finding('warn', 'CHECK_UNAVAILABLE', 'Could not reach the PagerDuty integration API — handles unverified.', { detail: err.message })];
+    }
+    services = [];
+    connected = false;
   }
 
   const known = services.map((s) => s.service_name);
@@ -44,6 +51,12 @@ async function run(monitor, client) {
     const target = handle.slice(PREFIX.length);
     if (known.some((k) => target === k || target.endsWith(`-${k}`))) continue;
 
+    if (!connected) {
+      findings.push(finding('fail', 'INTEGRATION_NOT_CONNECTED', `@${handle} cannot resolve — the PagerDuty integration is not connected to this org, so notifications are silently dropped.`, {
+        suggestion: 'Connect PagerDuty under Integrations, or route this monitor somewhere that exists.',
+      }));
+      continue;
+    }
     const guess = nearest(target, known);
     findings.push(finding('fail', 'HANDLE_UNRESOLVED', `@${handle} does not resolve to a configured integration — notifications are silently dropped.`, {
       detail: `known: ${known.map((k) => `@${PREFIX}${k}`).join(', ') || '(none)'}`,

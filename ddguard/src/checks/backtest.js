@@ -144,9 +144,35 @@ function merge(byScope, s) {
   for (const p of pointsOf(s)) if (p[0] > lastMs) seen.pointlist.push(p);
 }
 
-function daysLabel(seconds) {
-  const d = seconds / 86400;
-  return `${d >= 10 ? Math.round(d) : Number(d.toFixed(1))}-day`;
+// "30-day", "3.3-day", "6-hour", "55-minute": the span the data actually covers.
+function spanLabel(seconds) {
+  const unit = seconds >= 86400 ? ['day', 86400] : seconds >= 3600 ? ['hour', 3600] : ['minute', 60];
+  const n = seconds / unit[1];
+  return `${n >= 10 ? Math.round(n) : Number(n.toFixed(1))}-${unit[0]}`;
+}
+
+// "30-day" -> "30d"; "30-day" -> "30 days"
+function short(label) {
+  return label.replace(/-(day|hour|minute)$/, (_, u) => u[0]);
+}
+function long(label) {
+  const [n, u] = label.split('-');
+  return `${n} ${u}${Number(n) === 1 ? '' : 's'}`;
+}
+
+// First to last non-null point across every series, plus one interval for the last point.
+function spanOf(series, resolution) {
+  let first = Infinity;
+  let last = -Infinity;
+  for (const s of series) {
+    for (const [ms, v] of pointsOf(s)) {
+      if (v === null || v === undefined) continue;
+      if (ms < first) first = ms;
+      if (ms > last) last = ms;
+    }
+  }
+  if (first === Infinity) return 0;
+  return (last - first) / 1000 + resolution;
 }
 
 function findingFor(monitor) {
@@ -185,17 +211,21 @@ function pointsOf(series) {
   return series.pointlist || [];
 }
 
-function reconstructionNotes(resolution, range, days, label, windowSeconds) {
+// Why the verdict covers less than --days asked for: the metric is younger than the range,
+// or the API would have rolled a longer range up past the window. The first matters more.
+function reconstructionNotes(resolution, range, days, label, windowSeconds, span) {
   const notes = [`reconstructed from ${resolution}s points, not Datadog's own evaluation history`];
-  if (range.covered < range.requested) {
-    notes.unshift(`asked for ${days}d, used ${label.replace('-day', 'd')} — a longer range comes back rolled up past the ${windowSeconds}s window`);
+  if (span < range.covered * 0.9) {
+    notes.unshift(`asked for ${days}d, but the metric only has ${short(label)} of history — the verdict covers that span only`);
+  } else if (range.covered < range.requested) {
+    notes.unshift(`asked for ${days}d, used ${short(label)} — a longer range comes back rolled up past the ${windowSeconds}s window`);
   }
   return notes.join('\n');
 }
 
 function tooCoarse(finding, resolution, parsed, label) {
   return finding('warn', 'CHECK_UNAVAILABLE',
-    `The metrics API returned ${resolution}s resolution for a ${parsed.windowSeconds}s evaluation window — ${label.replace('-day', ' days')} cannot be reconstructed at this window.`, {
+    `The metrics API returned ${resolution}s resolution for a ${parsed.windowSeconds}s evaluation window — ${long(label)} cannot be reconstructed at this window.`, {
       detail: 'Datadog rolls long ranges up automatically; aggregating those rollups into 5-minute evaluations would invent a result.',
       suggestion: `Widen the monitor window past ${resolution}s, or re-run with a smaller --days.`,
     });
@@ -229,7 +259,7 @@ function neverFires(finding, ctx) {
 }
 
 function tooNoisy(finding, ctx, counted, headline) {
-  const perWeek = Math.round((counted.transitions / (ctx.covered / 86400)) * 7);
+  const perWeek = Math.round((counted.transitions / (ctx.span / 86400)) * 7);
   return finding('warn', 'BACKTEST_TOO_NOISY', `${headline} ≈ ${perWeek} pages/week`, {
     detail: ctx.detail,
     suggestion: quieterLines(ctx, counted).join('\n') || undefined,
@@ -243,7 +273,7 @@ function verdict(finding, ctx, counted) {
   if (counted.transitions === 0) return neverFires(finding, ctx);
   if (counted.transitions > NOISY_ABOVE) return tooNoisy(finding, ctx, counted, headline);
   return finding('pass', 'BACKTEST_OK', headline, {
-    detail: `${plural(counted.transitions, 'transition')} in ${ctx.label.replace('-day', 'd')}`,
+    detail: `${plural(counted.transitions, 'transition')} in ${short(ctx.label)}`,
   });
 }
 
@@ -262,7 +292,10 @@ function judge(finding, ctx) {
   const resolution = resolutionOf(longestPointlist(series));
   if (resolution === null) return [];
 
-  const label = daysLabel(range.covered);
+  // Label the span the data covers, not the range we asked for: a metric created last week
+  // has a week of history, and "30-day backtest" would claim evidence that does not exist.
+  const span = Math.min(spanOf(series, resolution), range.covered);
+  const label = spanLabel(span);
   if (resolution > parsed.windowSeconds) return tooCoarse(finding, resolution, parsed, label);
 
   const cadence = Math.min(parsed.windowSeconds, Math.max(EVAL_CADENCE, resolution));
@@ -273,8 +306,8 @@ function judge(finding, ctx) {
   const criticalRecovery = monitor.thresholds.critical_recovery ?? null;
   const counted = replay(groups, parsed.operator, critical, criticalRecovery ?? critical);
   return verdict(finding, {
-    ...ctx, groups, all, label, criticalRecovery, covered: range.covered,
-    detail: reconstructionNotes(resolution, range, days, label, parsed.windowSeconds),
+    ...ctx, groups, all, label, criticalRecovery, span,
+    detail: reconstructionNotes(resolution, range, days, label, parsed.windowSeconds, span),
   }, counted);
 }
 

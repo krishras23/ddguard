@@ -83,3 +83,26 @@ test('a pagerduty outage leaves handles unverified without failing', async (t) =
   assert.strictEqual(findings.length, 1);
   assert.strictEqual(findings[0].code, 'CHECK_UNAVAILABLE');
 });
+
+test('a PagerDuty integration that is not connected fails every pagerduty handle', async (t) => {
+  const { url } = await serve(t, (req, res) => json(res, { errors: ['pagerduty not found'] }, 404));
+  const client = createClient({ apiUrl: url });
+
+  const findings = await handles.run(
+    { address: 'datadog_monitor.x', message: '@pagerduty-nginx-oncall @pagerduty-worker-oncall @slack-x' },
+    client
+  );
+
+  assert.strictEqual(findings.length, 2);
+  for (const f of findings) {
+    assert.strictEqual(f.level, 'fail');
+    assert.strictEqual(f.code, 'INTEGRATION_NOT_CONNECTED');
+    assert.match(f.message, /not connected to this org/);
+  }
+});
+
+test('HTTP errors carry their status', async (t) => {
+  const { url } = await serve(t, (req, res) => json(res, { errors: ['nope'] }, 403));
+  const client = createClient({ apiUrl: url });
+  await assert.rejects(client.pagerdutyServices(), (err) => err.status === 403 && /403/.test(err.message));
+});

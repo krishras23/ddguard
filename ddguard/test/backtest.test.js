@@ -147,7 +147,8 @@ test('quiet monitor passes', async () => {
   const values = Array.from({ length: 300 }, (_, i) => (i % 100 === 0 ? 900 : 40));
   const [f] = await backtest.run(monitor({ critical: 500 }), parsed, clientFor(values), { days: 30 });
   assert.strictEqual(f.level, 'pass');
-  assert.strictEqual(f.detail, '3 transitions in 30d');
+  // clientFor hands back ~1 day of points whatever the range asked for, and the label says so
+  assert.strictEqual(f.detail, '3 transitions in 1d');
 });
 
 test('noisy monitor warns and searches for a threshold that lands in the quiet band', async () => {
@@ -156,7 +157,7 @@ test('noisy monitor warns and searches for a threshold that lands in the quiet b
   const values = Array.from({ length: 300 }, (_, i) => (i % 60 === 0 ? 1000 : i % 2 ? 55 : 45));
   const [f] = await backtest.run(monitor({ critical: 50 }), parsed, clientFor(values), { days: 30 });
   assert.strictEqual(f.code, 'BACKTEST_TOO_NOISY');
-  assert.match(f.message, /30-day backtest: \d+ transitions \(\d+ single-evaluation flaps\) ≈ \d+ pages\/week/);
+  assert.match(f.message, /1-day backtest: \d+ transitions \(\d+ single-evaluation flaps\) ≈ \d+ pages\/week/);
   assert.match(f.suggestion, /at critical=\d+(\.\d+)? \(p\d+(\.\d+)?\) this would have fired 5 times instead of \d+/);
 });
 
@@ -239,6 +240,18 @@ test('chunked requests keep the resolution inside the window that one request wo
   } finally {
     await dd.close();
   }
+});
+
+test('a metric younger than the range is labelled by its history, not the request', async () => {
+  const now = 1_700_000_000;
+  // 55 minutes of 300s points ending now, as Datadog returns for a metric created an hour ago
+  const pointlist = Array.from({ length: 11 }, (_, i) => [(now - 3300 + i * 300) * 1000, 10]);
+  const client = { query: async () => ({ status: 'ok', series: [{ metric: 'm', scope: 'env:test', pointlist }] }) };
+  const parsed = parse('avg(last_5m):avg:worker.queue.latency{env:demo} > 100');
+  const [f] = await backtest.run(monitor({ critical: 100 }), parsed, client, { days: 30 });
+  assert.strictEqual(f.code, 'BACKTEST_NEVER_FIRES');
+  assert.match(f.message, /^55-minute backtest: 0 transitions/);
+  assert.match(f.detail, /asked for 30d, but the metric only has 55m of history/);
 });
 
 test('a capped request budget reports the window it actually used', async () => {

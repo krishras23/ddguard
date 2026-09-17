@@ -8,10 +8,14 @@ TAIL        ?= exit $$status
 
 export PORT
 
-.PHONY: seed mockdd demo check gate run image image-demo clean
+.PHONY: seed push mockdd demo check gate run image image-demo clean
 
 seed:
 	node mockdd/seed.js
+
+# push the last hour of fixture series into a real account (needs DD_API_KEY)
+push: seed
+	node mockdd/push.js
 
 mockdd:
 	node mockdd/server.js
