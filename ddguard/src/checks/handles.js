@@ -49,7 +49,7 @@ async function run(monitor, client) {
       continue;
     }
     const target = handle.slice(PREFIX.length);
-    if (known.some((k) => target === k || target.endsWith(`-${k}`))) continue;
+    if (known.includes(target)) continue;
 
     if (!connected) {
       findings.push(finding('fail', 'INTEGRATION_NOT_CONNECTED', `@${handle} cannot resolve — the PagerDuty integration is not connected to this org, so notifications are silently dropped.`, {

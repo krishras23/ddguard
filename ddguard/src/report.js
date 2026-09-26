@@ -5,6 +5,9 @@ const RESET = '\x1b[0m';
 
 const NETWORK_CHECKS = new Set(['liveness', 'handles', 'backtest']);
 const AUTH_STATUS = /\b(401|403)\b/;
+// Findings a network check makes before it touches the network. They prove nothing about
+// whether the API answered, so they cannot count a monitor as verified.
+const OFFLINE_CODES = new Set(['CHECK_UNAVAILABLE', 'NO_HANDLE']);
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -32,7 +35,7 @@ function counts(rows) {
 function verify(monitors, findings) {
   const unavailable = findings.filter((f) => f.code === 'CHECK_UNAVAILABLE');
   const verified = new Set(
-    findings.filter((f) => NETWORK_CHECKS.has(f.check) && f.code !== 'CHECK_UNAVAILABLE').map((f) => f.monitor)
+    findings.filter((f) => NETWORK_CHECKS.has(f.check) && !OFFLINE_CODES.has(f.code)).map((f) => f.monitor)
   );
   const auth = unavailable.find((f) => AUTH_STATUS.test(f.detail || ''));
 

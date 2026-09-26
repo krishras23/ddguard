@@ -60,3 +60,15 @@ test('the header states how many monitors went unverified', () => {
   assert.match(render(MONITORS, findings, 'markdown'), /1 unverified/);
   assert.doesNotMatch(render(MONITORS, [ok('datadog_monitor.a', 'liveness'), ok('datadog_monitor.b', 'liveness')], 'terminal'), /unverified/);
 });
+
+test('a monitor with no @handle does not mask a total outage', () => {
+  const findings = [
+    unavailable('datadog_monitor.a', 'liveness', 'ECONNREFUSED'),
+    { monitor: 'datadog_monitor.a', check: 'handles', level: 'warn', code: 'NO_HANDLE', message: 'No @handle.' },
+    unavailable('datadog_monitor.b', 'liveness', 'ECONNREFUSED'),
+    unavailable('datadog_monitor.b', 'handles', 'ECONNREFUSED'),
+  ];
+
+  assert.strictEqual(verify(MONITORS, findings).verified, 0);
+  assert.strictEqual(exitCode(MONITORS, findings), 2);
+});

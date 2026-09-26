@@ -22,13 +22,20 @@ async function explainEmpty(parsed, client) {
   const namespace = parsed.metric.slice(0, parsed.metric.lastIndexOf('.') + 1) || parsed.metric;
   const known = await client.searchMetrics(namespace).then((r) => (r.results && r.results.metrics) || []);
   if (known.includes(parsed.metric)) {
-    return `${parsed.metric} exists but reports nothing for {${scopeOf(parsed)}} — check the scope tags.`;
+    return { exists: true, text: `${parsed.metric} exists but reports nothing for {${scopeOf(parsed)}} — check the scope tags.` };
   }
   const nearest = known
     .map((m) => [m, distance(m, parsed.metric)])
     .filter(([, d]) => d <= Math.max(2, Math.floor(parsed.metric.length / 5)))
     .sort((a, b) => a[1] - b[1])[0];
-  return nearest ? `Did you mean ${nearest[0]}?` : `No metric named ${parsed.metric} has reported.`;
+  return { exists: false, text: nearest ? `Did you mean ${nearest[0]}?` : `No metric named ${parsed.metric} has reported.` };
+}
+
+// An error counter that alerts on > 0 reports nothing on a good day, and the first point it
+// does report is the one that fires. Silence there is not death — unless the metric does not
+// exist at all, or the monitor alerts on a drop, which with no data it can never see.
+function quietIsNormal(parsed, explained) {
+  return Boolean(explained && explained.exists) && (parsed.operator === '>' || parsed.operator === '>=');
 }
 
 async function run(monitor, parsed, client) {
@@ -48,9 +55,16 @@ async function run(monitor, parsed, client) {
   }
 
   if (!series.length) {
+    const explained = await explainEmpty(parsed, client).catch(() => null);
+    if (quietIsNormal(parsed, explained)) {
+      return [finding('warn', 'NO_RECENT_DATA', `Query returned 0 series over the last 24h — fine for a counter that only reports when something happens, fatal otherwise.`, {
+        detail: `metric: ${parsed.metric}`,
+        suggestion: explained.text,
+      })];
+    }
     return [finding('fail', 'NO_SERIES', 'Query returned 0 series over the last 24h — this monitor can never fire.', {
       detail: `metric: ${parsed.metric}`,
-      suggestion: await explainEmpty(parsed, client).catch(() => undefined),
+      suggestion: explained ? explained.text : undefined,
     })];
   }
 

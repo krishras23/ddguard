@@ -266,3 +266,12 @@ test('a capped request budget reports the window it actually used', async () => 
     await dd.close();
   }
 });
+
+test('the fetched query asks Datadog to roll up with the monitor aggregator', () => {
+  const q = (s) => backtest.fetchQuery(parse(s));
+  assert.strictEqual(q('max(last_5m):avg:m{*} > 1'), 'avg:m{*}.rollup(max)');
+  assert.strictEqual(q('sum(last_5m):sum:m{*}.as_count() > 1'), 'sum:m{*}.as_count().rollup(sum)');
+  assert.strictEqual(q('avg(last_5m):avg:m{*} > 1'), 'avg:m{*}');
+  assert.strictEqual(q('max(last_5m):avg:m{*}.rollup(avg, 60) > 1'), 'avg:m{*}.rollup(avg, 60)');
+  assert.strictEqual(q('max(last_5m):sum:a{*} / sum:b{*} > 1'), 'sum:a{*} / sum:b{*}');
+});

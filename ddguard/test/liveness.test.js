@@ -35,3 +35,32 @@ test('points older than the 24h window do not count as live', async () => {
 
   assert.strictEqual(finding.code, 'NO_POINTS');
 });
+
+const emptyWithKnown = (metrics) => ({
+  query: async () => ({ series: [] }),
+  searchMetrics: async () => ({ results: { metrics } }),
+});
+
+test('a quiet counter that alerts on a rise is a warning, not a dead monitor', async () => {
+  const parsed = parse('sum(last_5m):sum:app.errors{env:prod}.as_count() > 0');
+  const [finding] = await liveness.run(MONITOR, parsed, emptyWithKnown(['app.errors']));
+
+  assert.strictEqual(finding.level, 'warn');
+  assert.strictEqual(finding.code, 'NO_RECENT_DATA');
+});
+
+test('no data on a monitor that alerts on a drop still fails', async () => {
+  const parsed = parse('sum(last_5m):sum:app.requests{env:prod}.as_count() < 5');
+  const [finding] = await liveness.run(MONITOR, parsed, emptyWithKnown(['app.requests']));
+
+  assert.strictEqual(finding.level, 'fail');
+  assert.strictEqual(finding.code, 'NO_SERIES');
+});
+
+test('a metric that does not exist fails whatever the operator', async () => {
+  const parsed = parse('sum(last_5m):sum:app.erors{env:prod}.as_count() > 0');
+  const [finding] = await liveness.run(MONITOR, parsed, emptyWithKnown(['app.errors']));
+
+  assert.strictEqual(finding.level, 'fail');
+  assert.strictEqual(finding.suggestion, 'Did you mean app.errors?');
+});

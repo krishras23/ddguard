@@ -106,3 +106,16 @@ test('HTTP errors carry their status', async (t) => {
   const client = createClient({ apiUrl: url });
   await assert.rejects(client.pagerdutyServices(), (err) => err.status === 403 && /403/.test(err.message));
 });
+
+test('a handle that only ends in a known service name does not resolve', async (t) => {
+  const { url } = await serve(t, pagerdutyRoutes);
+  const client = createClient({ apiUrl: url });
+
+  const findings = await handles.run(
+    { address: 'datadog_monitor.x', message: '@pagerduty-typo-nginx-oncall' },
+    client
+  );
+
+  assert.strictEqual(findings.length, 1);
+  assert.strictEqual(findings[0].code, 'HANDLE_UNRESOLVED');
+});

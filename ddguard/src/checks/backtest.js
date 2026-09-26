@@ -14,6 +14,19 @@ const REDUCERS = {
   count: (vs) => vs.length,
 };
 
+// Datadog rolls long ranges up with avg unless told otherwise, and max(last_5m) over 5-minute
+// averages never sees a 1-minute spike. Ask for the rollup the monitor's own aggregator
+// implies. Only for a single-term query: a trailing .rollup() binds to the last term alone.
+const ROLLUP_FOR = { max: 'max', min: 'min', sum: 'sum' };
+const METRIC_TERM = /\w+:[A-Za-z0-9_.*\-]+\{[^}]*\}/g;
+
+function fetchQuery(parsed) {
+  const method = ROLLUP_FOR[parsed.timeAggregator];
+  const q = parsed.dataQuery;
+  if (!method || /\.rollup\(/.test(q) || (q.match(METRIC_TERM) || []).length !== 1) return q;
+  return `${q}.rollup(${method})`;
+}
+
 function compare(v, operator, threshold) {
   switch (operator) {
     case '>': return v > threshold;
@@ -323,7 +336,7 @@ async function run(monitor, parsed, client, opts = {}) {
 
   let series;
   try {
-    series = await fetchRange(client, parsed.dataQuery, range.from, range.to, range.chunkSeconds);
+    series = await fetchRange(client, fetchQuery(parsed), range.from, range.to, range.chunkSeconds);
   } catch (err) {
     return findings.concat(finding('warn', 'CHECK_UNAVAILABLE',
       `Could not reach the metrics API — ${days}-day backtest skipped.`, { detail: err.message }));
@@ -332,4 +345,4 @@ async function run(monitor, parsed, client, opts = {}) {
   return findings.concat(judge(finding, { monitor, parsed, critical, series, range, days }));
 }
 
-module.exports = { run, roll, replay, resolutionOf };
+module.exports = { run, roll, replay, resolutionOf, fetchQuery };

@@ -77,7 +77,7 @@ Eight fixture monitors: one deliberately correct, seven carrying one real defect
 
 | Check | Catches |
 |---|---|
-| `liveness` | Query returns zero series — typo'd metric, wrong scope tag, group-by that matches nothing |
+| `liveness` | Query returns zero series — typo'd metric, wrong scope tag, group-by that matches nothing. A known metric that is merely quiet on a `>` monitor (an error counter on a good day) is a warning, not a failure |
 | `handles` | `@pagerduty-paymnets` — Datadog drops unresolvable handles silently, at every layer; also any `@pagerduty-*` handle in an org with no PagerDuty integration connected |
 | `config` | Missing `critical_recovery`, `no_data_timeframe` under 2× the window, grouped monitors with no `new_group_delay` |
 | `backtest` | Replays 30 days through the state machine: monitors that never fire, and monitors that fire 700 times |
@@ -214,7 +214,7 @@ fixtures/      monitors.tf and the tfplan.json ddguard reads
 demo/          the recording and the script that produces it
 ```
 
-Node, CommonJS, no runtime dependencies. `npm test` — 42 tests.
+Node, CommonJS, no runtime dependencies. `npm test` — 53 tests.
 
 ## Limitations
 
