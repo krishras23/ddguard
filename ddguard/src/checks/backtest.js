@@ -277,10 +277,10 @@ function verdict(finding, ctx, counted) {
   });
 }
 
-// The query string's threshold when the plan declares none; null when there is nothing to
-// backtest against.
-function criticalOf(monitor, parsed) {
-  const critical = monitor.thresholds.critical ?? parsed.threshold;
+// The query string's threshold, which is the one Datadog evaluates whatever the plan declares;
+// null when there is nothing to backtest against.
+function criticalOf(parsed) {
+  const critical = parsed.threshold;
   if (critical === null || critical === undefined) return null;
   return critical;
 }
@@ -313,7 +313,7 @@ function judge(finding, ctx) {
 
 async function run(monitor, parsed, client, opts = {}) {
   if (!parsed) return [];
-  const critical = criticalOf(monitor, parsed);
+  const critical = criticalOf(parsed);
   if (critical === null) return [];
 
   const days = opts.days ?? 30;

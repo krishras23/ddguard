@@ -200,6 +200,16 @@ test('a threshold that disagrees with the query is a warn of its own', async () 
   assert.strictEqual(f.code, 'THRESHOLD_MISMATCH');
   assert.strictEqual(f.level, 'warn');
   assert.match(f.message, /monitor_thresholds\.critical is 100 but the query compares against 80/);
+  assert.strictEqual(f.detail, 'backtested at 80');
+});
+
+test('a mismatched plan threshold is not the one backtested', async () => {
+  const parsed = parse('avg(last_5m):avg:worker.queue.latency{env:demo} > 100');
+  const values = Array.from({ length: 200 }, () => 90);
+  const findings = await backtest.run(monitor({ critical: 80 }), parsed, clientFor(values), { days: 30 });
+  assert.strictEqual(findings[0].code, 'THRESHOLD_MISMATCH');
+  assert.strictEqual(findings[1].code, 'BACKTEST_NEVER_FIRES');
+  assert.match(findings[1].detail, /critical > 100/);
 });
 
 test('no parsed query is a no-op', async () => {
